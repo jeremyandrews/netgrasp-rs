@@ -1,0 +1,8 @@
+[package]
+name = "netgrasp"
+version = "0.10.0"
+authors = ["Jeremy Andrews <jeremy@tag1consulting.com>"]
+edition = "2018"
+
+[dependencies]
+pcap = "0.7.0"
