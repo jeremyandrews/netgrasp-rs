@@ -22,9 +22,8 @@ use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol};
 use smoltcp::time::Instant;
 
 
-// Cut and paste from smoltcp tcpdump example, usage:
-//   sudo ./target/debug/netgrasp wlp0s20f3
-// @TODO: Filter everything but ARP packets
+// Listening for ARP packets derived from the smoltcp tcpdump example.
+// https://github.com/m-labs/smoltcp/blob/master/examples/tcpdump.rs
 fn main() {
     // https://doc.rust-lang.org/std/env/fn.args.html
     // https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.nth
@@ -63,8 +62,7 @@ fn main() {
             let frame = EthernetFrame::new_checked(&buffer);
             // https://docs.rs/smoltcp/0.5.0/smoltcp/wire/struct.EthernetFrame.html#method.ethertype
             // Determine what type of packet we've received.
-            let ether_type = EthernetFrame::ethertype(&frame.unwrap());
-            if ether_type == EthernetProtocol::Arp {
+            if EthernetFrame::ethertype(&frame.unwrap()) == EthernetProtocol::Arp {
                 // The `pretty_print` module provides bits and pieces for printing concise, easily human
                 // readable packet listings.
                 println!("{}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
