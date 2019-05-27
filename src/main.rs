@@ -17,7 +17,7 @@ use smoltcp::phy::{Device, RxToken, RawSocket};
 //   - "A read/write wrapper around an Ethernet II frame buffer."
 //   - https://github.com/m-labs/smoltcp/blob/master/src/wire/ethernet.rs#L79
 //   - https://docs.rs/smoltcp/0.5.0/smoltcp/wire/struct.EthernetFrame.html
-use smoltcp::wire::{PrettyPrinter, EthernetFrame};
+use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol};
 // https://github.com/m-labs/smoltcp/blob/master/src/time.rs#L29
 use smoltcp::time::Instant;
 
@@ -37,7 +37,6 @@ fn main() {
     // Creates a raw socket, bound to the interface as named in `ifname`.
     // Note: this requires superuser privileges, or corresponding capability bit.
     // Passes ifname as a reference.
-    // @TODO: Why are we unwrapping the RawSocket?
     let mut socket = RawSocket::new(ifname.as_ref()).unwrap();
     // https://doc.rust-lang.org/std/keyword.loop.html
     // Loop until break or exit ...
@@ -59,9 +58,17 @@ fn main() {
         // More detail on closures:
         // https://stevedonovan.github.io/rustifications/2018/08/18/rust-closures-are-hard.html
         rx_token.consume(Instant::now(), |buffer| {
-            // The `pretty_print` module provides bits and pieces for printing concise, easily human
-            // readable packet listings.
-            println!("{}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
+            // https://docs.rs/smoltcp/0.5.0/smoltcp/wire/struct.EthernetFrame.html#method.new_checked
+            // Be sure we have a valid ethernet frame.
+            let frame = EthernetFrame::new_checked(&buffer);
+            // https://docs.rs/smoltcp/0.5.0/smoltcp/wire/struct.EthernetFrame.html#method.ethertype
+            // Determine what type of packet we've received.
+            let ether_type = EthernetFrame::ethertype(&frame.unwrap());
+            if ether_type == EthernetProtocol::Arp {
+                // The `pretty_print` module provides bits and pieces for printing concise, easily human
+                // readable packet listings.
+                println!("{}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
+            }
             // https://doc.rust-lang.org/std/result/enum.Result.html#variant.Ok
             // Exits closure with success value
             Ok(())
