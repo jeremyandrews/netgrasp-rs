@@ -11,6 +11,14 @@ In order to build Netgrasp, the following libraries (or their equivalent) need t
 
 ## TODO
 
+Compare smoltcp to pcap
+ * still maintained: https://github.com/m-labs/smoltcp
+ * authors/maintainers: https://m-labs.hk/
+ * has simple ARP listening support, for example: `cargo build --example tcpdump`
+ * much smaller dependency chain
+ * does it support Mac OS X?
+ * does it support Windows? (And, do I care?)
+
 1. Parse configuration file (with HUP support for reloading)
 1. Create multiple threads for: parent, listening for ARPs, exposing API
 1. Daemonize
