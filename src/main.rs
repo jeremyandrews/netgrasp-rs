@@ -8,6 +8,8 @@ extern crate log;
 // https://docs.rs/simplelog/
 extern crate simplelog;
 
+extern crate get_if_addrs;
+
 use clap::{Arg, App};
 use simplelog::*;
 use std::fs::File;
@@ -18,7 +20,20 @@ use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol};
 use smoltcp::time::Instant;
 
 
+// List all interfaces.
+fn list_interfaces() -> Vec<String> {
+    let mut ifaces: Vec<String> = Vec::new();
+    for iface in get_if_addrs::get_if_addrs().unwrap() {
+        ifaces.push(iface.name);
+    }
+    ifaces.sort();
+    ifaces.dedup();
+    ifaces
+}
+
 fn main() {
+    let interfaces = list_interfaces();
+
     // Using clap to parse and validate command line arguments. https://docs.rs/clap/
     let matches = App::new("Netgrasp")
         .version("0.10.0")
@@ -29,6 +44,7 @@ fn main() {
             .long("interface")
             .value_name("INTERFACE")
             .help("Specify the network interface to listen on")
+            //.possible_values(interfaces)
             .required(true)
             .takes_value(true))
         .arg(Arg::with_name("logfile")
@@ -77,6 +93,8 @@ fn main() {
     info!("Logfile verbosity level: {}", log_level);
 
     info!("Writing to log file: {}", log_file);
+
+    debug!("Available interfaces: {:?}", interfaces);
 
     // We require an interface so unwrap() is safe here.
     let interface = matches.value_of("interface").unwrap();
