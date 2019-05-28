@@ -34,6 +34,11 @@ fn list_interfaces() -> Vec<String> {
 fn main() {
     let interfaces = list_interfaces();
 
+    let mut values: Vec<&str> = Vec::new();
+    for value in interfaces.iter() {
+        values.push(&value[..]);
+    }
+
     // Using clap to parse and validate command line arguments. https://docs.rs/clap/
     let matches = App::new("Netgrasp")
         .version("0.10.0")
@@ -44,7 +49,7 @@ fn main() {
             .long("interface")
             .value_name("INTERFACE")
             .help("Specify the network interface to listen on")
-            //.possible_values(interfaces)
+            .possible_values(&values)
             .required(true)
             .takes_value(true))
         .arg(Arg::with_name("logfile")
