@@ -28,13 +28,23 @@ fn main() {
             .short("i")
             .long("interface")
             .value_name("INTERFACE")
-            .help("Specify a network interface to listen on")
+            .help("Specify the network interface to listen on")
             .required(true)
             .takes_value(true))
+        .arg(Arg::with_name("logfile")
+            .short("l")
+            .long("logfile")
+            .value_name("LOGFILE")
+            .help("Path of logfile (default './netgrasp.log')")
+            .takes_value(true))
+        .arg(Arg::with_name("g")
+            .short("g")
+            .multiple(true)
+            .help("Sets the logged level of verbosity"))
         .arg(Arg::with_name("v")
             .short("v")
             .multiple(true)
-            .help("Sets the level of verbosity"))
+            .help("Sets the output level of verbosity"))
         .get_matches();
 
     // Allow optionally controlling debug output level
@@ -45,14 +55,28 @@ fn main() {
         2 => debug_level = LevelFilter::Debug,
         3 | _ => debug_level = LevelFilter::Trace,
     }
+
+    let log_level;
+    match matches.occurrences_of("g") {
+        0 => log_level = LevelFilter::Warn,
+        1 => log_level = LevelFilter::Info,
+        2 => log_level = LevelFilter::Debug,
+        3 | _ => log_level = LevelFilter::Trace,
+    }
+
+    // @TODO: confirm that the path exists and is writeable
+    let log_file = matches.value_of("logfile").unwrap_or("./netgrasp.log");
     
     CombinedLogger::init(
         vec![
             TermLogger::new(debug_level, Config::default()).unwrap(),
-            WriteLogger::new(LevelFilter::Info, Config::default(), File::create("netgrasp.log").unwrap()),
+            WriteLogger::new(log_level, Config::default(), File::create(log_file).unwrap()),
         ]
     ).unwrap();
-    info!("Verbosity level: {}", debug_level);
+    info!("Output verbosity level: {}", debug_level);
+    info!("Logfile verbosity level: {}", log_level);
+
+    info!("Writing to log file: {}", log_file);
 
     // We require an interface so unwrap() is safe here.
     let interface = matches.value_of("interface").unwrap();
