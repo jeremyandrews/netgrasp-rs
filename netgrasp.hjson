@@ -1,0 +1,55 @@
+{
+    # A list of one or more (comma-separated) interfaces netgrasp should listen on
+    interfaces: ["wlp0s20f3", "eth0"]
+    # How many seconds after seeing a MAC before we consider an address active
+    # @TODO: see if we can remove this variable, or at least make it less important
+    # by watching typical ARP response times and detect when a device stops responding
+    # to requests.
+    inactive_timeout: 10800
+    # How long to delay between running the main control loop. (Lower delay requires more CPU.)
+    loop_sleep: 5
+    # Netgrasp must be run as the superuser, but drops superuser permissions for all
+    # tasks that don't require it. Specify the user and group the daemon should run
+    # as for all non-superuser tasks.
+    #netgrasp_user = daemon
+    #netgrasp_group = daemon
+
+    # The above user must have read/write access to the database_filename.
+    database_file: ./netgrasp.db
+
+    log_file: ./netgrasp.log
+    log_level: WARNING
+    pid_file: ./netgrasp.pid
+
+    # Enabled alert types
+    #   first_requested:     the first time an IP address has been requested
+    #   requested:           any time an IP address is requested
+    #   first_seen:          the first time an IP address is seen
+    #   first_seen_recently: the first time an IP address is seen since being stale
+    #   seen:                any time an IP address is seen
+    #   changed_ip:          a known device has changed IPs
+    #   stale:               any time an IP address isn't seen for more than active_timeout seconds
+    #   network_scan:        a large number of IP requests on the network
+    #   duplicate_ip:        multiple MACs with the same IP active on network
+    enabled_alert_types: first_requested, first_seen, first_seen_recently, changed_ip, network_scan, duplicate_ip
+
+    # Enabled digests:
+    #   daily:               a daily summary of network traffic
+    #   weekly:              a weekly summary of network traffic
+    #   monthly:             a monthly summary of network traffic
+    enabled_digests: daily, weekly, monthly
+
+    email_enabled: False
+    #email_to: [""]
+    email_from: Netgrasp <netgrasp@example.com>
+    /*
+    ;smtp_hostname = example.com
+    ;smtp_port = 587
+    ; Supported smtp modes are: default, ssl, tls
+    ;smtp_mode = tls
+    ;smtp_username = username
+    ;smtp_password = password
+    ;alerts = first_seen_device, first_seen_device_recently, network_scan, duplicate_ip, stale, changed_ip
+    ;digests = daily,weekly
+    */
+}

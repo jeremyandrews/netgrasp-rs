@@ -1,11 +1,20 @@
+#[macro_use]
+extern crate lazy_static;
+
 // https://lib.rs/crates/smoltcp
 extern crate smoltcp;
-  
+// https://lib.rs/crates/config
+extern crate config;
+
 // https://doc.rust-lang.org/std/env/
 use std::env;
 // https://doc.rust-lang.org/std/os/unix/io/trait.AsRawFd.html
 // (This is supported only on UNIX; Windows would use AsRawSocket instead.)
 use std::os::unix::io::AsRawFd;
+
+use config::*;
+use std::sync::RwLock;
+
 // https://github.com/m-labs/smoltcp/blob/master/src/phy/sys/mod.rs#L26
 use smoltcp::phy::wait as phy_wait;
 // Device: https://github.com/m-labs/smoltcp/blob/master/src/phy/raw_socket.rs#L40
@@ -21,10 +30,30 @@ use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol};
 // https://github.com/m-labs/smoltcp/blob/master/src/time.rs#L29
 use smoltcp::time::Instant;
 
+lazy_static! {
+    static ref SETTINGS: RwLock<Config> = RwLock::new({
+        let mut settings = Config::default();
+        settings.merge(File::with_name("netgrasp.hjson")).unwrap();
+
+        settings
+    });
+}
+
 
 // Listening for ARP packets derived from the smoltcp tcpdump example.
 // https://github.com/m-labs/smoltcp/blob/master/examples/tcpdump.rs
 fn main() {
+    //let mut settings = config::Config::default();
+    //settings.merge(config::File::with_name("netgrasp.hjson")).unwrap();
+    //println!("{:?}", SETTINGS.read()?.get::<i64>("inactive_timeout")?);
+    println!("inactive_timeout: {}", SETTINGS.read()?.get::<i32>("inactive_timeout")?);
+
+    // Add in `./Settings.hjson`
+    // Add in settings from the environment (with a prefix of APP)
+    // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
+    //.merge(config::Environment::with_prefix("APP")).unwrap();
+
+
     // https://doc.rust-lang.org/std/env/fn.args.html
     // https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.nth
     // Gets the second element of the env iterator (which is the first argument)
