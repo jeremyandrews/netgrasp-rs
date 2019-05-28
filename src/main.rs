@@ -1,20 +1,13 @@
-#[macro_use]
-extern crate lazy_static;
-
 // https://lib.rs/crates/smoltcp
 extern crate smoltcp;
-// https://lib.rs/crates/config
-extern crate config;
 
-// https://doc.rust-lang.org/std/env/
-use std::env;
+// https://docs.rs/clap/
+extern crate clap;
+
+use clap::{Arg, App};
 // https://doc.rust-lang.org/std/os/unix/io/trait.AsRawFd.html
 // (This is supported only on UNIX; Windows would use AsRawSocket instead.)
 use std::os::unix::io::AsRawFd;
-
-use config::*;
-use std::sync::RwLock;
-
 // https://github.com/m-labs/smoltcp/blob/master/src/phy/sys/mod.rs#L26
 use smoltcp::phy::wait as phy_wait;
 // Device: https://github.com/m-labs/smoltcp/blob/master/src/phy/raw_socket.rs#L40
@@ -30,42 +23,37 @@ use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol};
 // https://github.com/m-labs/smoltcp/blob/master/src/time.rs#L29
 use smoltcp::time::Instant;
 
-lazy_static! {
-    static ref SETTINGS: RwLock<Config> = RwLock::new({
-        let mut settings = Config::default();
-        settings.merge(File::with_name("netgrasp.hjson")).unwrap();
-
-        settings
-    });
-}
-
 
 // Listening for ARP packets derived from the smoltcp tcpdump example.
 // https://github.com/m-labs/smoltcp/blob/master/examples/tcpdump.rs
 fn main() {
-    //let mut settings = config::Config::default();
-    //settings.merge(config::File::with_name("netgrasp.hjson")).unwrap();
-    //println!("{:?}", SETTINGS.read()?.get::<i64>("inactive_timeout")?);
-    println!("inactive_timeout: {}", SETTINGS.read()?.get::<i32>("inactive_timeout")?);
+    // Using clap to parse and validate command line arguments. https://docs.rs/clap/
+    let matches = App::new("Netgrasp")
+        .version("0.10.0")
+        .author("Jeremy Andrews <jeremy@tag1consulting.com>")
+        .about("A passive network observation tool")
+        .arg(Arg::with_name("interface")
+            .short("i")
+            .long("interface")
+            .value_name("INTERFACE")
+            .help("Specify a network interface to listen on")
+            .required(true)
+            .takes_value(true))
+        // @TODO: make use of verbosity level
+        .arg(Arg::with_name("v")
+            .short("v")
+            .multiple(true)
+            .help("Sets the level of verbosity"))
+        .get_matches();
+    
+    // We require an interface so unwrap() is safe here.
+    let interface = matches.value_of("interface").unwrap();
 
-    // Add in `./Settings.hjson`
-    // Add in settings from the environment (with a prefix of APP)
-    // Eg.. `APP_DEBUG=1 ./target/app` would set the `debug` key
-    //.merge(config::Environment::with_prefix("APP")).unwrap();
-
-
-    // https://doc.rust-lang.org/std/env/fn.args.html
-    // https://doc.rust-lang.org/std/iter/trait.Iterator.html#method.nth
-    // Gets the second element of the env iterator (which is the first argument)
-    // https://doc.rust-lang.org/std/option/enum.Option.html#method.unwrap
-    // Unwrap extracts the string from the optional args iterator value.
-    // https://doc.rust-lang.org/std/option/index.html
-    let ifname = env::args().nth(1).unwrap();
     // https://github.com/m-labs/smoltcp/blob/master/src/phy/raw_socket.rs#L24
-    // Creates a raw socket, bound to the interface as named in `ifname`.
+    // Creates a raw socket, bound to the interface as named in `interface`.
     // Note: this requires superuser privileges, or corresponding capability bit.
     // Passes ifname as a reference.
-    let mut socket = RawSocket::new(ifname.as_ref()).unwrap();
+    let mut socket = RawSocket::new(interface.as_ref()).unwrap();
     // https://doc.rust-lang.org/std/keyword.loop.html
     // Loop until break or exit ...
     loop {

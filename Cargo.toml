@@ -5,6 +5,5 @@ authors = ["Jeremy Andrews <jeremy@tag1consulting.com>"]
 edition = "2018"
 
 [dependencies]
-config = "0.9.3"
-smoltcp = "0.5.0"
-lazy_static = "^0.2.8"
+smoltcp = "^0.5.0"
+clap = "^2.33.0"
