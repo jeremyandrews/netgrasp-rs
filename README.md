@@ -1,39 +1,30 @@
 # Netgrasp
 
+A passive network observation tool.
+
 Rewriting Netgrasp in Rust.
-https://github.com/jeremyandrews/netgrasp
+    <https://github.com/jeremyandrews/netgrasp>
 
-## Dependencies
+## Details
 
-* none
+* Leverages [smoltcp](https://lib.rs/crates/smoltcp) to monitor a network interface for ARP packets.
+* Leverages [clap](https://lib.rs/crates/clap) to provide command line argument parsing.
+* Leverages [simplelog](https://lib.rs/crates/simplelog) to provide logging to stdout and files.
+* Leverages [get_if_addrs](https://lib.rs/crates/get_if_addrs) to validate network interface.
 
 ## TODO
 
-### Compare smoltcp to pcap
-
-* still maintained: https://github.com/m-labs/smoltcp
-* authors/maintainers: https://m-labs.hk/
-* has simple ARP listening support, for example: `cargo build --example tcpdump`
-* much smaller dependency chain
-* does it support Mac OS X?
-* does it support FreeBSD?
-* does it support Windows? (And, do I care?)
-
-### Select a configuration crate
-
-* currently using config-rs
-* https://github.com/mehcode/config-rs
-* maintainer not happy with current design: https://github.com/mehcode/config-rs/issues/111
-* supports hjson which I like
-
-1. Parse configuration file (with HUP support for reloading)
+1. Integrate SQLite backend
+    * Select a crate:
+    * <https://github.com/stainless-steel/sqlite>
+    * <https://github.com/jgallagher/rusqlite>
+1. Parse configuration file
     * support multiple configuration paths
     * allow CLI override of configuration path
-    * either support HUP signal, or watch (https://github.com/mehcode/config-rs/tree/master/examples/watch)
-1. Create multiple threads for: parent, listening for ARPs, exposing API
-1. Daemonize
-1. Listen for ARP packets on one or more interfaces
-1. Integrate SQLite backend
-1. Handle CLI interactions
+    * catch HUP signal and reload configuration
+    * use TOML like rust (<https://crates.io/crates/toml)>
+1. Daemonize (<https://github.com/knsd/daemonize)>
 1. Notifications (email, other?)
+1. Support graceful shutdown
+1. Support monitoring multiple interfaces at the same time
 1. Expose data and control through API
