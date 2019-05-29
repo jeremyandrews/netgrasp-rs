@@ -1,15 +1,21 @@
 use std::os::unix::io::AsRawFd;
 use smoltcp::phy::{Device, RxToken, RawSocket};
 use smoltcp::phy::wait as phy_wait;
-use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol};
+use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol, EthernetAddress, Ipv4Address, ArpPacket, ArpOperation};
 use smoltcp::time::Instant;
 use std::sync::mpsc::{Sender};
 
-pub struct ArpPacket {
+#[derive(Debug)]
+pub struct NetgraspArpPacket {
     pub interface: String,
+    pub src_mac: EthernetAddress,
+    pub src_ip: Ipv4Address,
+    pub tgt_mac: EthernetAddress,
+    pub tgt_ip: Ipv4Address,
+    pub operation: ArpOperation,
 }
 
-pub fn listen(iface: String, arp_tx: Sender<ArpPacket>) {
+pub fn listen(iface: String, arp_tx: Sender<NetgraspArpPacket>) {
     let mut socket = RawSocket::new(iface.as_ref()).unwrap();
     // Creates a raw socket, bound to the interface as named in `interface`.
     // Note: this requires superuser privileges, or corresponding capability bit.
@@ -26,13 +32,21 @@ pub fn listen(iface: String, arp_tx: Sender<ArpPacket>) {
         // More detail on closures:
         //   https://stevedonovan.github.io/rustifications/2018/08/18/rust-closures-are-hard.html
         rx_token.consume(Instant::now(), |buffer| {
-            let arp_packet = ArpPacket {
-                interface: iface.clone(),
-            };
             // Be sure we have a valid ethernet frame.
-            let frame = EthernetFrame::new_checked(&buffer);
+            // @TODO: handle bad frames (unwrap_or)?
+            let frame = EthernetFrame::new_checked(&buffer).unwrap();
             // We only care about ARP packets.
-            if EthernetFrame::ethertype(&frame.unwrap()) == EthernetProtocol::Arp {
+            if EthernetFrame::ethertype(&frame) == EthernetProtocol::Arp {
+                let packet = &ArpPacket::new_checked(frame.payload()).unwrap();
+                //let arp_repr = ArpRepr::parse(&packet)?;
+                let arp_packet = NetgraspArpPacket {
+                    interface: iface.clone(),
+                    src_mac: EthernetAddress::from_bytes(packet.source_hardware_addr()),
+                    src_ip: Ipv4Address::from_bytes(packet.source_protocol_addr()),
+                    tgt_mac: EthernetAddress::from_bytes(packet.target_hardware_addr()),
+                    tgt_ip: Ipv4Address::from_bytes(packet.target_protocol_addr()),
+                    operation: packet.operation(),
+                };
                 trace!("{}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
                 arp_tx.send(arp_packet).unwrap();
             }

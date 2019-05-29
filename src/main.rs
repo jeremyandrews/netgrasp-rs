@@ -113,7 +113,10 @@ fn main() {
 
     loop {
         let received = arp_rx.recv().unwrap();
-        println!("Parent received ARP notification from interface: {}", received.interface);
+        println!("{}: ARP {:?} packet from {} {} targeting {} {}", 
+            received.interface, received.operation,
+            received.src_ip.to_string(), received.src_mac.to_string(),
+            received.tgt_ip.to_string(), received.tgt_mac.to_string());
         // Proof of concept; exit the program.
         break;
     }
