@@ -13,11 +13,10 @@ extern crate get_if_addrs;
 use clap::{Arg, App};
 use simplelog::*;
 use std::fs::File;
-use std::os::unix::io::AsRawFd;
-use smoltcp::phy::wait as phy_wait;
-use smoltcp::phy::{Device, RxToken, RawSocket};
-use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol};
-use smoltcp::time::Instant;
+use std::thread;
+use std::sync::mpsc;
+
+mod arp;
 
 
 // List all interfaces.
@@ -103,31 +102,19 @@ fn main() {
 
     // We require an interface so unwrap() is safe here.
     let interface = matches.value_of("interface").unwrap();
-    info!("Listening interface: {}", interface);
+    let iface: String = interface.to_string();
+    info!("Listening interface: {}", iface);
 
-    // Creates a raw socket, bound to the interface as named in `interface`.
-    // Note: this requires superuser privileges, or corresponding capability bit.
-    // Passes ifname as a reference.
-    let mut socket = RawSocket::new(interface.as_ref()).unwrap();
+    // Create a thread for monitoring ARP packets.
+    let (arp_tx, arp_rx) = mpsc::channel();
+    thread::spawn(move || {
+        arp::listen(iface, arp_tx);
+    });
+
     loop {
-        // Logic for listening to ARP packets with smoltcp derived from tcpdump example:
-        //   https://github.com/m-labs/smoltcp/blob/master/examples/tcpdump.rs
-        // Wait forever for socket raw file descriptor to become readable.
-        phy_wait(socket.as_raw_fd(), None).unwrap();
-        // Returns both rx and tx as option, we only use the former.
-        let (rx_token, _) = socket.receive().unwrap();
-        // Implemented as a Closure:
-        //   https://doc.rust-lang.org/book/ch13-01-closures.html#refactoring-with-closures-to-store-code
-        // More detail on closures:
-        //   https://stevedonovan.github.io/rustifications/2018/08/18/rust-closures-are-hard.html
-        rx_token.consume(Instant::now(), |buffer| {
-            // Be sure we have a valid ethernet frame.
-            let frame = EthernetFrame::new_checked(&buffer);
-            // We only care about ARP packets.
-            if EthernetFrame::ethertype(&frame.unwrap()) == EthernetProtocol::Arp {
-                trace!("{}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
-            }
-            Ok(())
-        }).unwrap();
+        let received = arp_rx.recv().unwrap();
+        println!("Parent received ARP notification from interface: {}", received.interface);
+        // Proof of concept; exit the program.
+        break;
     }
 }
