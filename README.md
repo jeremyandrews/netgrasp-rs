@@ -3,7 +3,7 @@
 A passive network observation tool.
 
 Rewriting Netgrasp in Rust.
-    <https://github.com/jeremyandrews/netgrasp>
+<https://github.com/jeremyandrews/netgrasp>
 
 ## Details
 
