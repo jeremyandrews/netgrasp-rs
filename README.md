@@ -18,6 +18,9 @@ Rewriting Netgrasp in Rust.
     * Select a crate:
     * <https://github.com/stainless-steel/sqlite>
     * <https://github.com/jgallagher/rusqlite>
+        * <https://rust-lang-nursery.github.io/rust-cookbook/database/sqlite.html>
+        * Recipe doesn't work in my testing
+        * Library examples don't work in my testing
 1. Parse configuration file
     * support multiple configuration paths
     * allow CLI override of configuration path

@@ -17,6 +17,7 @@ use std::thread;
 use std::sync::mpsc;
 
 mod arp;
+mod db;
 
 
 // List all interfaces.
@@ -95,9 +96,7 @@ fn main() {
     ).unwrap();
     info!("Output verbosity level: {}", debug_level);
     info!("Logfile verbosity level: {}", log_level);
-
     info!("Writing to log file: {}", log_file);
-
     debug!("Available interfaces: {:?}", interfaces);
 
     // We require an interface so unwrap() is safe here.
@@ -110,6 +109,8 @@ fn main() {
     thread::spawn(move || {
         arp::listen(iface, arp_tx);
     });
+
+    db::create_database();
 
     loop {
         let received = arp_rx.recv().unwrap();
