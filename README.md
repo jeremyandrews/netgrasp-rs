@@ -11,6 +11,7 @@ Rewriting Netgrasp in Rust.
 * Leverages [clap](https://lib.rs/crates/clap) to provide command line argument parsing.
 * Leverages [simplelog](https://lib.rs/crates/simplelog) to provide logging to stdout and files.
 * Leverages [get_if_addrs](https://lib.rs/crates/get_if_addrs) to validate network interface.
+* Leverages [sqlite](https://github.com/stainless-steel/sqlite) to integrate with Sqlite3.
 
 ## TODO
 

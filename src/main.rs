@@ -1,14 +1,5 @@
-// https://lib.rs/crates/smoltcp
-extern crate smoltcp;
-
-// https://docs.rs/clap/
-extern crate clap;
 #[macro_use]
 extern crate log;
-// https://docs.rs/simplelog/
-extern crate simplelog;
-
-extern crate get_if_addrs;
 
 use clap::{Arg, App};
 use simplelog::*;
@@ -16,9 +7,13 @@ use std::fs::File;
 use std::thread;
 use std::sync::mpsc;
 
-mod arp;
-mod db;
+mod db {
+    pub mod sqlite3;
+}
 
+mod net {
+    pub mod arp;
+}
 
 // List all interfaces.
 fn list_interfaces() -> Vec<String> {
@@ -107,10 +102,10 @@ fn main() {
     // Create a thread for monitoring ARP packets.
     let (arp_tx, arp_rx) = mpsc::channel();
     thread::spawn(move || {
-        arp::listen(iface, arp_tx);
+        net::arp::listen(iface, arp_tx);
     });
 
-    db::create_database();
+    db::sqlite3::create_database();
 
     loop {
         let received = arp_rx.recv().unwrap();
@@ -118,6 +113,7 @@ fn main() {
             received.interface, received.operation,
             received.src_ip.to_string(), received.src_mac.to_string(),
             received.tgt_ip.to_string(), received.tgt_mac.to_string());
+        db::sqlite3::log_arp_packet(received);
         // Proof of concept; exit the program.
         break;
     }
