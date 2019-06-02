@@ -10,9 +10,23 @@ pub struct NetgraspArpPacket {
     pub interface: String,
     pub src_mac: EthernetAddress,
     pub src_ip: Ipv4Address,
+    pub src_is_self: bool,
+    pub src_is_broadcast: bool,
     pub tgt_mac: EthernetAddress,
     pub tgt_ip: Ipv4Address,
+    pub tgt_is_self: bool,
+    pub tgt_is_broadcast: bool,
     pub operation: ArpOperation,
+}
+
+fn get_interface_ip_address(interface: String) -> String {
+    let mut ip: String = String::from("");
+    for iface in get_if_addrs::get_if_addrs().unwrap() {
+        if iface.name == interface {
+            ip = iface.ip().to_string();
+        }
+    }
+    ip
 }
 
 pub fn listen(iface: String, arp_tx: Sender<NetgraspArpPacket>) {
@@ -38,13 +52,19 @@ pub fn listen(iface: String, arp_tx: Sender<NetgraspArpPacket>) {
             // We only care about ARP packets.
             if EthernetFrame::ethertype(&frame) == EthernetProtocol::Arp {
                 let packet = &ArpPacket::new_checked(frame.payload()).unwrap();
-                //let arp_repr = ArpRepr::parse(&packet)?;
+                let interface_ip = get_interface_ip_address(iface.clone());
+                let src_ip = Ipv4Address::from_bytes(packet.source_protocol_addr());
+                let tgt_ip = Ipv4Address::from_bytes(packet.target_protocol_addr());
                 let arp_packet = NetgraspArpPacket {
                     interface: iface.clone(),
                     src_mac: EthernetAddress::from_bytes(packet.source_hardware_addr()),
-                    src_ip: Ipv4Address::from_bytes(packet.source_protocol_addr()),
+                    src_ip: src_ip,
+                    src_is_self: src_ip.to_string() == interface_ip,
+                    src_is_broadcast: EthernetAddress::from_bytes(packet.source_hardware_addr()).is_broadcast(),
                     tgt_mac: EthernetAddress::from_bytes(packet.target_hardware_addr()),
-                    tgt_ip: Ipv4Address::from_bytes(packet.target_protocol_addr()),
+                    tgt_ip: tgt_ip,
+                    tgt_is_self: tgt_ip.to_string() == interface_ip,
+                    tgt_is_broadcast: EthernetAddress::from_bytes(packet.target_hardware_addr()).is_broadcast(),
                     operation: packet.operation(),
                 };
                 trace!("{}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));

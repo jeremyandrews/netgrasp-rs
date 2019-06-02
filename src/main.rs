@@ -109,12 +109,10 @@ fn main() {
 
     loop {
         let received = arp_rx.recv().unwrap();
-        println!("{}: ARP {:?} packet from {} {} targeting {} {}", 
-            received.interface, received.operation,
-            received.src_ip.to_string(), received.src_mac.to_string(),
-            received.tgt_ip.to_string(), received.tgt_mac.to_string());
+        //println!("{}: ARP {:?} packet from {} {} targeting {} {}", 
+        //    received.interface, received.operation,
+        //    received.src_ip.to_string(), received.src_mac.to_string(),
+        //    received.tgt_ip.to_string(), received.tgt_mac.to_string());
         db::sqlite3::log_arp_packet(received);
-        // Proof of concept; exit the program.
-        break;
     }
 }
