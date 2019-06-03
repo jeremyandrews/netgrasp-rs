@@ -1,5 +1,6 @@
 use smoltcp::wire::{ArpOperation};
 use sqlite::Value;
+use dns_lookup::{lookup_addr};
 
 // @TODO: I assume we should be holding onto this connection rather than instantiating it
 // over and over. Perhaps a global, or a local static, or ...?
@@ -17,7 +18,8 @@ pub fn create_database() {
             mac_id  INTEGER PRIMARY KEY,
             address TEXT,
             is_self INTEGER,
-            created TIMESTAMP
+            created TIMESTAMP,
+            updated TIMESTAMP
         )").unwrap();
     connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxmac_address ON mac (address)").unwrap();
 
@@ -27,7 +29,10 @@ pub fn create_database() {
             ip_id INTEGER PRIMARY KEY,
             mac_id INTEGER,
             address TEXT,
-            created TIMESTAMP
+            host_name TEXT,
+            custom_name TEXT,
+            created TIMESTAMP,
+            updated TIMESTAMP
         )").unwrap();
     connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_address_macid ON mac (address, mac_id)").unwrap();
     //connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (ip_id, mac_id)").unwrap();
@@ -48,7 +53,7 @@ pub fn create_database() {
             tgt_ip TEXT,
             operation INTEGER,
             matched INTEGER,
-            timestamp TIMESTAMP
+            created TIMESTAMP
         )").unwrap();
     connection.execute("CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation)").unwrap();
 }
@@ -141,14 +146,19 @@ pub fn get_ip_id(ip_address: String, mac_id: i64) -> i64 {
     }
     // We're seeing this IP for the first time, add it to the database.
     else {
-        trace!("INSERT INTO ip (address, mac_id) VALUES('{}', {});", &ip_address, mac_id);
-        let mut statement = connection.prepare("INSERT INTO ip (address, mac_id) VALUES(?, ?)").unwrap();
+        let ip: std::net::IpAddr = ip_address.parse().unwrap();
+        let host_name = lookup_addr(&ip).unwrap();
+        info!("detected new hostname({}) with (ip address, mac_id) pair: ({}, {})", &host_name, &ip_address, mac_id);
+
+        trace!("INSERT INTO ip (address, mac_id, host_name) VALUES('{}', {}, '{}');", &ip_address, mac_id, &host_name);
+        let mut statement = connection.prepare("INSERT INTO ip (address, mac_id, host_name) VALUES(?, ?, ?)").unwrap();
         let bound_ip_address: &str = &ip_address;
         statement.bind(1, bound_ip_address).unwrap();
         statement.bind(2, mac_id).unwrap();
+        let bound_host_name: &str = &host_name;
+        statement.bind(3, bound_host_name).unwrap();
         statement.next().unwrap();
         // @TODO: trigger new_ip event.
-        info!("detected new (ip address, mac_id) pair: ({}, {})", &ip_address, mac_id);
         // Recursively determine the ip_id of the IP address we just added.
         get_ip_id(ip_address, mac_id)
     }
@@ -230,11 +240,11 @@ pub fn log_arp_packet(arp_packet: crate::net::arp::NetgraspArpPacket) {
     // @TODO
     let matched = 0;
     // @TODO
-    let timestamp = 0;
-    trace!("INSERT INTO arp (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, timestamp) VALUES('{}', {}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {});",
-        &arp_packet.interface, src_mac_id, src_ip_id, tgt_ip_id, arp_packet.src_mac.to_string(), arp_packet.src_ip.to_string(), arp_packet.tgt_mac.to_string(), arp_packet.tgt_ip.to_string(), operation, matched, timestamp);
+    let created = 0;
+    trace!("INSERT INTO arp (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created) VALUES('{}', {}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {});",
+        &arp_packet.interface, src_mac_id, src_ip_id, tgt_ip_id, arp_packet.src_mac.to_string(), arp_packet.src_ip.to_string(), arp_packet.tgt_mac.to_string(), arp_packet.tgt_ip.to_string(), operation, matched, created);
     let mut statement = connection.prepare("INSERT INTO arp
-        (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, timestamp)
+        (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created)
         VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").unwrap();
     let bound_interface: &str = &arp_packet.interface;
     statement.bind(1, bound_interface).unwrap();
@@ -251,50 +261,17 @@ pub fn log_arp_packet(arp_packet: crate::net::arp::NetgraspArpPacket) {
     statement.bind(8, bound_tgt_ip).unwrap();
     statement.bind(9, operation).unwrap();
     statement.bind(10, matched).unwrap();
-    statement.bind(11, timestamp).unwrap();
+    statement.bind(11, created).unwrap();
     statement.next().unwrap();
 }
 
 // Python Netgrasp DB Schema:
-//
-// CREATE TABLE IF NOT EXISTS mac(
-//   mid INTEGER PRIMARY KEY,
-//   vid TEXT,
-//   address TEXT,
-//   created TIMESTAMP,
-//   self INTEGER
-// )
-// CREATE UNIQUE INDEX IF NOT EXISTS idxmac_address ON mac (address)
-// CREATE INDEX IF NOT EXISTS idxmac_vid ON mac (vid)
 //
 // CREATE TABLE IF NOT EXISTS vendor(
 //   vid INTEGER PRIMARY KEY,
 //   name VARCHAR UNIQUE,
 //   created TIMESTAMP
 // )
-//
-// CREATE TABLE IF NOT EXISTS ip(
-//   iid INTEGER PRIMARY KEY,
-//   mid INTEGER,
-//   address TEXT,
-//   created TIMESTAMP
-// )
-// CREATE UNIQUE INDEX IF NOT EXISTS idxip_mid_iid ON ip (mid, iid)
-// CREATE INDEX IF NOT EXISTS idxip_address_mid_created ON ip (address, mid, created)
-// CREATE INDEX IF NOT EXISTS idxip_mid_iid ON ip (mid, iid)
-//
-// CREATE TABLE IF NOT EXISTS host(
-//   hid INTEGER PRIMARY KEY,
-//   iid INTEGER,
-//   name TEXT,
-//   custom_name TEXT,
-//   created TIMESTAMP,
-//   updated TIMESTAMP
-//)
-// CREATE UNIQUE INDEX IF NOT EXISTS idxhost_iid ON host (iid)
-// CREATE INDEX IF NOT EXISTS idxhost_name ON host (name)
-// CREATE INDEX IF NOT EXISTS idxhost_custom ON host (custom_name)
-// CREATE INDEX IF NOT EXISTS idxhost_updated ON host (updated)
 //
 // CREATE TABLE IF NOT EXISTS device(
 //   did INTEGER PRIMARY KEY,
@@ -341,21 +318,6 @@ pub fn log_arp_packet(arp_packet: crate::net::arp::NetgraspArpPacket) {
 // CREATE INDEX IF NOT EXISTS idxrequest_updated ON request (updated)
 // CREATE INDEX IF NOT EXISTS idxrequest_active_ip ON request (active, ip)
 // CREATE INDEX IF NOT EXISTS idxrequest_did_created ON request (did, created)
-//
-// CREATE TABLE IF NOT EXISTS arp(
-//   aid INTEGER PRIMARY KEY,
-//   did INT,
-//   src_mac TEXT,
-//   src_ip TEXT,
-//   rid INT,
-//   dst_mac TEXT,
-//   dst_ip TEXT,
-//   interface TEXT,
-//   network TEXT,
-//   timestamp TIMESTAMP
-// )
-// CREATE INDEX IF NOT EXISTS idxarp_srcip_timestamp_rid ON arp (src_ip, timestamp, rid)
-// CREATE INDEX IF NOT EXISTS idxarp_rid_srcip ON arp (rid, src_ip)
 //
 // CREATE TABLE IF NOT EXISTS event(
 //   eid INTEGER PRIMARY KEY,

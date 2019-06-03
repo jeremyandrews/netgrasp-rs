@@ -10,11 +10,16 @@ Rewriting Netgrasp in Rust.
 * Leverages [smoltcp](https://lib.rs/crates/smoltcp) to monitor a network interface for ARP packets.
 * Leverages [clap](https://lib.rs/crates/clap) to provide command line argument parsing.
 * Leverages [simplelog](https://lib.rs/crates/simplelog) to provide logging to stdout and files.
-* Leverages [get_if_addrs](https://lib.rs/crates/get_if_addrs) to validate network interface.
-* Leverages [sqlite](https://github.com/stainless-steel/sqlite) to integrate with Sqlite3.
+* Leverages [get_if_addrs](https://lib.rs/crates/get_if_addrs) to validate network interfaces.
+* Leverages [sqlite](https://crates.io/crates/sqlite) to integrate with Sqlite3.
+* Leverages [dns-lookup](https://crates.io/crates/dns-lookup/) to perform reverse DNS lookups.
 
 ## TODO
 
+1. Get MAC vendors
+    * an option, but doesn't seem to update the data source <https://github.com/flier/rust-manuf>
+    * looks like a better option <https://github.com/meh/rust-hwaddr>
+    * or do it like netgrasp-py, and query this API: 
 1. Parse configuration file
     * support multiple configuration paths
     * allow CLI override of configuration path
