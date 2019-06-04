@@ -5,6 +5,16 @@ A passive network observation tool.
 Rewriting Netgrasp in Rust.
 <https://github.com/jeremyandrews/netgrasp>
 
+## Setup
+
+Temporarily, must manually download `manuf.txt` which is used by `oui` for MAC lookup:
+
+    wget -O manuf.txt 'https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf'
+    mkdir data/
+    mv manuf.txt data/
+
+@TODO: automate download and installation of `manuf.txt`, and provide a way to keep it up-to-date.
+
 ## Details
 
 * Leverages [smoltcp](https://lib.rs/crates/smoltcp) to monitor a network interface for ARP packets.
@@ -13,13 +23,10 @@ Rewriting Netgrasp in Rust.
 * Leverages [get_if_addrs](https://lib.rs/crates/get_if_addrs) to validate network interfaces.
 * Leverages [sqlite](https://crates.io/crates/sqlite) to integrate with Sqlite3.
 * Leverages [dns-lookup](https://crates.io/crates/dns-lookup/) to perform reverse DNS lookups.
+* Leverages [oui](https://crates.io/crates/oui) to perform vendor lookups of MAC addresses.
 
 ## TODO
 
-1. Get MAC vendors
-    * an option, but doesn't seem to update the data source <https://github.com/flier/rust-manuf>
-    * looks like a better option <https://github.com/meh/rust-hwaddr>
-    * or do it like netgrasp-py, and query this API: 
 1. Parse configuration file
     * support multiple configuration paths
     * allow CLI override of configuration path

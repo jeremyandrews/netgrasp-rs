@@ -1,6 +1,8 @@
 use smoltcp::wire::{ArpOperation};
 use sqlite::Value;
 use dns_lookup::{lookup_addr};
+use eui48::MacAddress;
+use oui::OuiDatabase;
 
 // @TODO: I assume we should be holding onto this connection rather than instantiating it
 // over and over. Perhaps a global, or a local static, or ...?
@@ -16,6 +18,7 @@ pub fn create_database() {
     connection.execute(
         "CREATE TABLE IF NOT EXISTS mac (
             mac_id  INTEGER PRIMARY KEY,
+            vendor_id  INTEGER,
             address TEXT,
             is_self INTEGER,
             created TIMESTAMP,
@@ -39,6 +42,14 @@ pub fn create_database() {
     //connection.execute("CREATE INDEX IF NOT EXISTS idxip_address_mid_created ON ip (address, mac_id, created)").unwrap();
     //connection.execute("CREATE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (mac_id, ip_id)").unwrap();
 
+    connection.execute(
+        "CREATE TABLE IF NOT EXISTS vendor(
+            vendor_id INTEGER PRIMARY KEY,
+            name VARCHAR UNIQUE,
+            full_name VARCHAR UNIQUE,
+            created TIMESTAMP
+        )").unwrap();
+
     // Log full details about each ARP packet seen.
     connection.execute(
         "CREATE TABLE IF NOT EXISTS arp (
@@ -56,6 +67,43 @@ pub fn create_database() {
             created TIMESTAMP
         )").unwrap();
     connection.execute("CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation)").unwrap();
+}
+
+pub fn get_vendor_id(name: String, full_name: String) -> i64 {
+    let connection = get_database_connection();
+
+    trace!("SELECT vendor_id FROM vendor WHERE name = '{}' AND full_name = '{}';", &name, &full_name);
+    let mut cursor = connection
+        .prepare("SELECT vendor_id FROM vendor WHERE name = ? AND full_name = ?")
+        .unwrap()
+        .cursor();
+    let bound_name = &name;
+    let bound_full_name = &full_name;
+    cursor.bind(&[
+        Value::String(bound_name.to_string()),
+        Value::String(bound_full_name.to_string()),
+    ]).unwrap();
+
+    // If this vendor exists, simply return the vendor_id.
+    if let Some(row) = cursor.next().unwrap() {
+        // Return the vendor_id.
+        row[0].as_integer().unwrap()
+    }
+    // If this mac address doesn't exist, add it.
+    else {
+        // @TODO: trigger new_vendor event.
+        info!("detected new vendor({} [{}])", &full_name, &name);
+
+        trace!("INSERT INTO vendor (name, full_name) VALUES('{}', '{}');", &name, &full_name);
+        let mut statement = connection.prepare("INSERT INTO vendor (name, full_name) VALUES(?, ?)").unwrap();
+        let bound_name: &str = &name;
+        statement.bind(1, bound_name).unwrap();
+        let bound_full_name: &str = &full_name;
+        statement.bind(2, bound_full_name).unwrap();
+        statement.next().unwrap();
+        // Recursively determine the vendor_id we just added.
+        get_vendor_id(name, full_name)
+    }
 }
 
 // Retreives mac_id of mac address, adding if not already seen.
@@ -80,14 +128,44 @@ pub fn get_mac_id(mac_address: String, is_self: i64) -> i64 {
     }
     // If this mac address doesn't exist, add it.
     else {
-        trace!("INSERT INTO mac (address, is_self) VALUES('{}', {});", &mac_address, is_self);
-        let mut statement = connection.prepare("INSERT INTO mac (address, is_self) VALUES(?, ?)").unwrap();
+        // @TODO: download manuf file on initial run (see oui package)
+        // @TODO: only build this database once.
+        let db = OuiDatabase::new_from_file("data/manuf.txt").unwrap();
+        let formatted_mac_address = MacAddress::parse_str(&mac_address).unwrap();
+        let vendor = db.query_by_mac(&formatted_mac_address).unwrap();
+        let name_short: String;
+        let name_long: String;
+        match vendor {
+            Some(details) => {
+                name_short = details.name_short;
+                match details.name_long {
+                    Some(name) => {
+                        name_long = name;
+                    }
+                    None => {
+                        name_long = name_short.clone();
+                    }
+                }
+            }
+            None => {
+                name_short = "Unknown".to_string();
+                name_long = "Unknown".to_string();
+            }
+
+        }
+        // Look up vendor_id, creating if necessary.
+        let vendor_id = get_vendor_id(name_short.clone(), name_long.clone());
+
+        // @TODO: trigger new_mac event.
+        info!("detected new mac_address({}) with vendor({}) [{}]", &mac_address, &name_long, &name_short);
+
+        trace!("INSERT INTO mac (address, is_self, vendor_id) VALUES('{}', {}, {});", &mac_address, is_self, vendor_id);
+        let mut statement = connection.prepare("INSERT INTO mac (address, is_self, vendor_id) VALUES(?, ?, ?)").unwrap();
         let bound_mac_address: &str = &mac_address;
         statement.bind(1, bound_mac_address).unwrap();
         statement.bind(2, is_self).unwrap();
+        statement.bind(3, vendor_id).unwrap();
         statement.next().unwrap();
-        // @TODO: trigger new_mac event.
-        info!("detected new mac_address: {}", &mac_address);
         // Recursively determine the mac_id of the mac address we just added.
         get_mac_id(mac_address, is_self)
     }
@@ -267,11 +345,6 @@ pub fn log_arp_packet(arp_packet: crate::net::arp::NetgraspArpPacket) {
 
 // Python Netgrasp DB Schema:
 //
-// CREATE TABLE IF NOT EXISTS vendor(
-//   vid INTEGER PRIMARY KEY,
-//   name VARCHAR UNIQUE,
-//   created TIMESTAMP
-// )
 //
 // CREATE TABLE IF NOT EXISTS device(
 //   did INTEGER PRIMARY KEY,
