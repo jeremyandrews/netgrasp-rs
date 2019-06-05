@@ -3,6 +3,10 @@ use sqlite::Value;
 use dns_lookup::{lookup_addr};
 use eui48::MacAddress;
 use oui::OuiDatabase;
+use crate::dirs::PROJECT_DIRS;
+use std::path::PathBuf;
+use std::fs::File;
+use std::io::{BufWriter, Write};
 
 // @TODO: I assume we should be holding onto this connection rather than instantiating it
 // over and over. Perhaps a global, or a local static, or ...?
@@ -130,7 +134,25 @@ pub fn get_mac_id(mac_address: String, is_self: i64) -> i64 {
     else {
         // @TODO: download manuf file on initial run (see oui package)
         // @TODO: only build this database once.
-        let db = OuiDatabase::new_from_file("data/manuf.txt").unwrap();
+        let data_local_dir = PROJECT_DIRS.data_local_dir();
+        let mut db_path = PathBuf::from(data_local_dir);
+        db_path.push("manuf.txt");
+        debug!("attempting to read from ouf database: {:?}", &db_path);
+        let db;
+        if db_path.exists() {
+            db = OuiDatabase::new_from_file(db_path.to_str().unwrap()).unwrap();
+        }
+        else {
+            // Netgrasp will auto-install Wireshark's manuf file for vendor lookups.
+            warn!("Required ouf database (for vendor-lookups) not found: {:?}", &db_path);
+            let manuf_url: &str = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf";
+            warn!("Downloading ouf database from {} ...", &manuf_url);
+            let body = reqwest::get(manuf_url).unwrap().text();
+            let new_file = File::create(&db_path).expect("Unable to create ouf database file.");
+            let mut new_file = BufWriter::new(new_file);
+            new_file.write_all(body.unwrap().as_bytes()).expect("Unable to write data");
+            db = OuiDatabase::new_from_file(db_path.to_str().unwrap()).unwrap();
+        }
         let formatted_mac_address = MacAddress::parse_str(&mac_address).unwrap();
         let vendor = db.query_by_mac(&formatted_mac_address).unwrap();
         let name_short: String;

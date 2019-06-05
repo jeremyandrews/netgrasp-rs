@@ -5,15 +5,6 @@ A passive network observation tool.
 Rewriting Netgrasp in Rust.
 <https://github.com/jeremyandrews/netgrasp>
 
-## Setup
-
-Temporarily, must manually download `manuf.txt` which is used by `oui` for MAC lookup:
-
-    wget -O manuf.txt 'https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf'
-    mkdir data/
-    mv manuf.txt data/
-
-@TODO: automate download and installation of `manuf.txt`, and provide a way to keep it up-to-date.
 
 ## Details
 
@@ -24,6 +15,7 @@ Temporarily, must manually download `manuf.txt` which is used by `oui` for MAC l
 * Leverages [sqlite](https://crates.io/crates/sqlite) to integrate with Sqlite3.
 * Leverages [dns-lookup](https://crates.io/crates/dns-lookup/) to perform reverse DNS lookups.
 * Leverages [oui](https://crates.io/crates/oui) to perform vendor lookups of MAC addresses.
+* Leverages [reqwest](https://crates.io/crates/reqwest) to automatically download Wireshark OUI database.
 
 ## TODO
 
@@ -47,4 +39,6 @@ Temporarily, must manually download `manuf.txt` which is used by `oui` for MAC l
     * handle bad packets
     * handle SQL errors
     * handle missing oui vendor lookup file
+1. Provide option for manually updating manuf.txt
+    * consider replacing reqwest with [hyper](https://github.com/hyperium/hyper) as our needs are simple, should reduce dependencies
 1. Expose data and control through API
