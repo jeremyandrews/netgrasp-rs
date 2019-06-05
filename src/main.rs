@@ -11,6 +11,7 @@ use std::thread;
 use std::sync::mpsc;
 use std::path::PathBuf;
 use std::fs;
+use std::io::{BufWriter, Write};
 pub mod statics;
 mod db {
     pub mod sqlite3;
@@ -129,6 +130,22 @@ fn main() {
     thread::spawn(move || {
         net::arp::listen(iface, arp_tx);
     });
+    
+    let data_local_dir = statics::PROJECT_DIRS.data_local_dir();
+    let mut ouf_db_path = PathBuf::from(data_local_dir);
+    ouf_db_path.push("manuf.txt");
+    debug!("Loading ouf database from path: {:?}", &ouf_db_path);
+    if !ouf_db_path.exists() {
+        // Netgrasp will auto-install Wireshark's manuf file for vendor lookups.
+        info!("Required ouf database (for vendor-lookups) not found: {:?}", &ouf_db_path);
+        let manuf_url: &str = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf";
+        info!("Downloading ouf database from {} ...", &manuf_url);
+        let body = reqwest::get(manuf_url).unwrap().text();
+        let new_file = File::create(&ouf_db_path).expect("Unable to create ouf database file.");
+        let mut new_file = BufWriter::new(new_file);
+        new_file.write_all(body.unwrap().as_bytes()).expect("Unable to write data");
+    }
+    let path_to_ouf_db: &str = ouf_db_path.to_str().unwrap();
 
     let mut db_file;
     match matches.value_of("dbfile") {
@@ -144,7 +161,7 @@ fn main() {
     }
     fs::create_dir_all(&db_file.parent().unwrap()).expect("Failed to create database file.");
     let path_to_db: &str = db_file.to_str().unwrap();
-    let netgrasp_db = db::sqlite3::NetgraspDb::new(path_to_db.to_string());
+    let netgrasp_db = db::sqlite3::NetgraspDb::new(path_to_db.to_string(), path_to_ouf_db.to_string());
     info!("Using database file: {}", path_to_db);
     netgrasp_db.create_database();
 

@@ -3,19 +3,17 @@ use sqlite::Value;
 use dns_lookup::{lookup_addr};
 use eui48::MacAddress;
 use oui::OuiDatabase;
-use crate::statics::PROJECT_DIRS;
-use std::path::PathBuf;
-use std::fs::File;
-use std::io::{BufWriter, Write};
 
 pub struct NetgraspDb {
-    connection: sqlite::Connection,
+    sql: sqlite::Connection,
+    oui: OuiDatabase,
 }
 
 impl NetgraspDb {
-    pub fn new(database_path: String) -> Self {
+    pub fn new(sql_database_path: String, oui_database_path: String) -> Self {
         NetgraspDb {
-            connection: sqlite::open(database_path).unwrap(),
+            sql: sqlite::open(sql_database_path).unwrap(),
+            oui: OuiDatabase::new_from_file(oui_database_path.as_str()).unwrap(),
         }
     }
 
@@ -96,7 +94,7 @@ impl NetgraspDb {
         let created = 0;
         trace!("INSERT INTO arp (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created) VALUES('{}', {}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {});",
             &arp_packet.interface, src_mac_id, src_ip_id, tgt_ip_id, arp_packet.src_mac.to_string(), arp_packet.src_ip.to_string(), arp_packet.tgt_mac.to_string(), arp_packet.tgt_ip.to_string(), operation, matched, created);
-        let mut statement = self.connection.prepare("INSERT INTO arp
+        let mut statement = self.sql.prepare("INSERT INTO arp
             (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created)
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").unwrap();
         let bound_interface: &str = &arp_packet.interface;
@@ -121,7 +119,7 @@ impl NetgraspDb {
     // Creates all the necessary tables and indexes, if not already existing.
     pub fn create_database(&self) {
         // Track each MAC address seen.
-        self.connection.execute(
+        self.sql.execute(
             "CREATE TABLE IF NOT EXISTS mac (
                 mac_id  INTEGER PRIMARY KEY,
                 vendor_id  INTEGER,
@@ -130,10 +128,10 @@ impl NetgraspDb {
                 created TIMESTAMP,
                 updated TIMESTAMP
             )").unwrap();
-        self.connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxmac_address ON mac (address)").unwrap();
+        self.sql.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxmac_address ON mac (address)").unwrap();
 
         // Track each IP address seen.
-        self.connection.execute(
+        self.sql.execute(
             "CREATE TABLE IF NOT EXISTS ip (
                 ip_id INTEGER PRIMARY KEY,
                 mac_id INTEGER,
@@ -143,12 +141,12 @@ impl NetgraspDb {
                 created TIMESTAMP,
                 updated TIMESTAMP
             )").unwrap();
-        self.connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_address_macid ON mac (address, mac_id)").unwrap();
-        //self.connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (ip_id, mac_id)").unwrap();
-        //self.connection.execute("CREATE INDEX IF NOT EXISTS idxip_address_mid_created ON ip (address, mac_id, created)").unwrap();
-        //self.connection.execute("CREATE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (mac_id, ip_id)").unwrap();
+        self.sql.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_address_macid ON mac (address, mac_id)").unwrap();
+        //self.sql.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (ip_id, mac_id)").unwrap();
+        //self.sql.execute("CREATE INDEX IF NOT EXISTS idxip_address_mid_created ON ip (address, mac_id, created)").unwrap();
+        //self.sql.execute("CREATE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (mac_id, ip_id)").unwrap();
 
-        self.connection.execute(
+        self.sql.execute(
             "CREATE TABLE IF NOT EXISTS vendor(
                 vendor_id INTEGER PRIMARY KEY,
                 name VARCHAR UNIQUE,
@@ -157,7 +155,7 @@ impl NetgraspDb {
             )").unwrap();
 
         // Log full details about each ARP packet seen.
-        self.connection.execute(
+        self.sql.execute(
             "CREATE TABLE IF NOT EXISTS arp (
                 arp_id INTEGER PRIMARY KEY,
                 interface TEXT,
@@ -172,12 +170,12 @@ impl NetgraspDb {
                 matched INTEGER,
                 created TIMESTAMP
             )").unwrap();
-        self.connection.execute("CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation)").unwrap();
+        self.sql.execute("CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation)").unwrap();
     }
 
     fn get_vendor_id(&self, name: String, full_name: String) -> i64 {
         trace!("SELECT vendor_id FROM vendor WHERE name = '{}' AND full_name = '{}';", &name, &full_name);
-        let mut cursor = self.connection
+        let mut cursor = self.sql
             .prepare("SELECT vendor_id FROM vendor WHERE name = ? AND full_name = ?")
             .unwrap()
             .cursor();
@@ -199,7 +197,7 @@ impl NetgraspDb {
             info!("detected new vendor({} [{}])", &full_name, &name);
 
             trace!("INSERT INTO vendor (name, full_name) VALUES('{}', '{}');", &name, &full_name);
-            let mut statement = self.connection.prepare("INSERT INTO vendor (name, full_name) VALUES(?, ?)").unwrap();
+            let mut statement = self.sql.prepare("INSERT INTO vendor (name, full_name) VALUES(?, ?)").unwrap();
             let bound_name: &str = &name;
             statement.bind(1, bound_name).unwrap();
             let bound_full_name: &str = &full_name;
@@ -214,7 +212,7 @@ impl NetgraspDb {
     fn get_mac_id(&self, mac_address: String, is_self: i64) -> i64 {
         // @TODO: use the same text for debug and generating the actual query.
         trace!("SELECT mac_id, is_self FROM mac WHERE address = '{}';", &mac_address);
-        let mut cursor = self.connection
+        let mut cursor = self.sql
             .prepare("SELECT mac_id, is_self FROM mac WHERE address = ?")
             .unwrap()
             .cursor();
@@ -230,29 +228,8 @@ impl NetgraspDb {
         }
         // If this mac address doesn't exist, add it.
         else {
-            // @TODO: download manuf file on initial run (see oui package)
-            // @TODO: only build this database once.
-            let data_local_dir = PROJECT_DIRS.data_local_dir();
-            let mut db_path = PathBuf::from(data_local_dir);
-            db_path.push("manuf.txt");
-            debug!("attempting to read from ouf database: {:?}", &db_path);
-            let db;
-            if db_path.exists() {
-                db = OuiDatabase::new_from_file(db_path.to_str().unwrap()).unwrap();
-            }
-            else {
-                // Netgrasp will auto-install Wireshark's manuf file for vendor lookups.
-                info!("Required ouf database (for vendor-lookups) not found: {:?}", &db_path);
-                let manuf_url: &str = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf";
-                info!("Downloading ouf database from {} ...", &manuf_url);
-                let body = reqwest::get(manuf_url).unwrap().text();
-                let new_file = File::create(&db_path).expect("Unable to create ouf database file.");
-                let mut new_file = BufWriter::new(new_file);
-                new_file.write_all(body.unwrap().as_bytes()).expect("Unable to write data");
-                db = OuiDatabase::new_from_file(db_path.to_str().unwrap()).unwrap();
-            }
             let formatted_mac_address = MacAddress::parse_str(&mac_address).unwrap();
-            let vendor = db.query_by_mac(&formatted_mac_address).unwrap();
+            let vendor = self.oui.query_by_mac(&formatted_mac_address).unwrap();
             let name_short: String;
             let name_long: String;
             match vendor {
@@ -282,7 +259,7 @@ impl NetgraspDb {
             info!("detected new mac_address({}) with vendor({}) [{}]", &mac_address, &name_long, &name_short);
 
             trace!("INSERT INTO mac (address, is_self, vendor_id) VALUES('{}', {}, {});", &mac_address, is_self, vendor_id);
-            let mut statement = self.connection.prepare("INSERT INTO mac (address, is_self, vendor_id) VALUES(?, ?, ?)").unwrap();
+            let mut statement = self.sql.prepare("INSERT INTO mac (address, is_self, vendor_id) VALUES(?, ?, ?)").unwrap();
             let bound_mac_address: &str = &mac_address;
             statement.bind(1, bound_mac_address).unwrap();
             statement.bind(2, is_self).unwrap();
@@ -304,7 +281,7 @@ impl NetgraspDb {
             // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
             // simply respect the DNS ttl?
             trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}';", &ip_address);
-            cursor = self.connection
+            cursor = self.sql
                 .prepare("SELECT ip_id, mac_id FROM ip WHERE address = ?")
                 .unwrap()
                 .cursor();
@@ -314,7 +291,7 @@ impl NetgraspDb {
         // While this IP address does have an associated mac_id, it may not yet be in our database (mac_id = 0).
         else {
             trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}' AND (mac_id = {} OR mac_id = 0);", &ip_address, mac_id);
-            cursor = self.connection
+            cursor = self.sql
                 .prepare("SELECT ip_id, mac_id FROM ip WHERE address = ? AND (mac_id = ? OR mac_id = 0)")
                 .unwrap()
                 .cursor();
@@ -330,7 +307,7 @@ impl NetgraspDb {
                 // We're seeing the MAC associated with this IP for the first time, update it.
                 if existing_mac_id == 0 {
                     info!("UPDATE ip SET mac_id = {} WHERE address = '{}';", mac_id, &ip_address);
-                    let mut cursor = self.connection
+                    let mut cursor = self.sql
                         .prepare("UPDATE ip SET mac_id = ? WHERE address = ?")
                         .unwrap()
                         .cursor();
@@ -352,7 +329,7 @@ impl NetgraspDb {
             info!("detected new hostname({}) with (ip address, mac_id) pair: ({}, {})", &host_name, &ip_address, mac_id);
 
             trace!("INSERT INTO ip (address, mac_id, host_name) VALUES('{}', {}, '{}');", &ip_address, mac_id, &host_name);
-            let mut statement = self.connection.prepare("INSERT INTO ip (address, mac_id, host_name) VALUES(?, ?, ?)").unwrap();
+            let mut statement = self.sql.prepare("INSERT INTO ip (address, mac_id, host_name) VALUES(?, ?, ?)").unwrap();
             let bound_ip_address: &str = &ip_address;
             statement.bind(1, bound_ip_address).unwrap();
             statement.bind(2, mac_id).unwrap();
