@@ -32,8 +32,19 @@ Temporarily, must manually download `manuf.txt` which is used by `oui` for MAC l
     * allow CLI override of configuration path
     * catch HUP signal and reload configuration
     * use TOML like rust (<https://crates.io/crates/toml)>
+1. Read/write to appropriate paths for environment
+    * https://github.com/soc/directories-rs
 1. Daemonize (<https://github.com/knsd/daemonize)>
 1. Notifications (email, other?)
+    * to review (<https://crates.io/crates/mailstrom>)
+    * to review (<https://crates.io/crates/lettre_email>)
+    * to review (<https://crates.io/crates/mail>)
+    * to review (<https://crates.io/crates/notify-rust>)
 1. Support graceful shutdown
 1. Support monitoring multiple interfaces at the same time
+1. Don't panic on failures, handle gracefully
+    * handle the ethernet interface going away (gracefully shutdown? or sleep and retry?)
+    * handle bad packets
+    * handle SQL errors
+    * handle missing oui vendor lookup file
 1. Expose data and control through API

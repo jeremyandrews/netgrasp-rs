@@ -148,8 +148,10 @@ pub fn get_mac_id(mac_address: String, is_self: i64) -> i64 {
                 }
             }
             None => {
+                // @TODO: Review these, perhaps perform a remote API call as a backup?
                 name_short = "Unknown".to_string();
                 name_long = "Unknown".to_string();
+                info!("vendor lookup of mac_address({}) failed", &mac_address);
             }
 
         }
@@ -180,6 +182,9 @@ pub fn get_ip_id(ip_address: String, mac_id: i64) -> i64 {
     let mut cursor;
     // If the IP address doesn't have an associated mac_id, see if we can query it from our database.
     if mac_id == 0 {
+        // @TODO: if ip.address == ip.host_name, perhaps perform another reverse IP lookup.
+        // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
+        // simply respect the DNS ttl?
         trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}';", &ip_address);
         cursor = connection
             .prepare("SELECT ip_id, mac_id FROM ip WHERE address = ?")

@@ -1,11 +1,17 @@
-#[macro_use]
-extern crate log;
-
+#[macro_use] extern crate log;
+#[macro_use] extern crate lazy_static;
 use clap::{Arg, App};
 use simplelog::*;
+use directories::{ProjectDirs};
 use std::fs::File;
 use std::thread;
 use std::sync::mpsc;
+use std::path::PathBuf;
+use std::fs;
+
+lazy_static! {
+    pub static ref PROJECT_DIRS: ProjectDirs = ProjectDirs::from("org", "Netgrasp", "Netgrasp").expect("Failed to determine project configuration directory");
+}
 
 mod db {
     pub mod sqlite3;
@@ -51,7 +57,7 @@ fn main() {
             .short("l")
             .long("logfile")
             .value_name("LOGFILE")
-            .help("Path of logfile (default './netgrasp.log')")
+            .help("Path of logfile")
             .takes_value(true))
         .arg(Arg::with_name("g")
             .short("g")
@@ -81,18 +87,34 @@ fn main() {
     }
 
     // @TODO: confirm that the path exists and is writeable
-    let log_file = matches.value_of("logfile").unwrap_or("./netgrasp.log");
+
+    let mut log_file;
+    match matches.value_of("logfile") {
+        None => {
+            let data_local_dir = PROJECT_DIRS.data_local_dir();
+            log_file = PathBuf::new();
+            log_file.push(data_local_dir);
+            log_file.push("netgrasp.log");
+        }
+        _ => {
+            log_file = PathBuf::from(matches.value_of("logfile").unwrap());
+        }
+    }
+    fs::create_dir_all(&log_file.parent().unwrap()).expect("Failed to create log file.");
     
     CombinedLogger::init(
         vec![
             TermLogger::new(debug_level, Config::default()).unwrap(),
-            WriteLogger::new(log_level, Config::default(), File::create(log_file).unwrap()),
+            WriteLogger::new(log_level, Config::default(), File::create(&log_file).unwrap()),
         ]
     ).unwrap();
     info!("Output verbosity level: {}", debug_level);
     info!("Logfile verbosity level: {}", log_level);
-    info!("Writing to log file: {}", log_file);
+    info!("Writing to log file: {}", log_file.display());
     debug!("Available interfaces: {:?}", interfaces);
+
+    let configuration_directory = PROJECT_DIRS.config_dir();
+    debug!("Configuration path: {}", configuration_directory.display());
 
     // We require an interface so unwrap() is safe here.
     let interface = matches.value_of("interface").unwrap();
