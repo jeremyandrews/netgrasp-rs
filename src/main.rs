@@ -55,8 +55,14 @@ fn main() {
         .arg(Arg::with_name("logfile")
             .short("l")
             .long("logfile")
-            .value_name("LOGFILE")
+            .value_name("LOG FILE")
             .help("Path of logfile")
+            .takes_value(true))
+        .arg(Arg::with_name("dbfile")
+            .short("d")
+            .long("dbfile")
+            .value_name("DATABASE FILE")
+            .help("Path of database file")
             .takes_value(true))
         .arg(Arg::with_name("g")
             .short("g")
@@ -84,8 +90,6 @@ fn main() {
         2 => log_level = LevelFilter::Debug,
         3 | _ => log_level = LevelFilter::Trace,
     }
-
-    // @TODO: confirm that the path exists and is writeable
 
     let mut log_file;
     match matches.value_of("logfile") {
@@ -126,7 +130,22 @@ fn main() {
         net::arp::listen(iface, arp_tx);
     });
 
-    let netgrasp_db = db::sqlite3::NetgraspDb::new();
+    let mut db_file;
+    match matches.value_of("dbfile") {
+        None => {
+            let data_local_dir = statics::PROJECT_DIRS.data_local_dir();
+            db_file = PathBuf::new();
+            db_file.push(data_local_dir);
+            db_file.push("netgrasp.db");
+        }
+        _ => {
+            db_file = PathBuf::from(matches.value_of("dbfile").unwrap());
+        }
+    }
+    fs::create_dir_all(&db_file.parent().unwrap()).expect("Failed to create database file.");
+    let path_to_db: &str = db_file.to_str().unwrap();
+    let netgrasp_db = db::sqlite3::NetgraspDb::new(path_to_db.to_string());
+    info!("Using database file: {}", path_to_db);
     netgrasp_db.create_database();
 
     loop {

@@ -24,8 +24,6 @@ Rewriting Netgrasp in Rust.
     * allow CLI override of configuration path
     * catch HUP signal and reload configuration
     * use TOML like rust (<https://crates.io/crates/toml)>
-1. Read/write to appropriate paths for environment
-    * https://github.com/soc/directories-rs
 1. Daemonize (<https://github.com/knsd/daemonize)>
 1. Notifications (email, other?)
     * to review (<https://crates.io/crates/mailstrom>)

@@ -13,9 +13,9 @@ pub struct NetgraspDb {
 }
 
 impl NetgraspDb {
-    pub fn new() -> Self {
+    pub fn new(database_path: String) -> Self {
         NetgraspDb {
-            connection: sqlite::open("./netgrasp.db").unwrap(),
+            connection: sqlite::open(database_path).unwrap(),
         }
     }
 
