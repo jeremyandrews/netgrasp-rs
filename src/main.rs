@@ -11,7 +11,7 @@ use std::thread;
 use std::sync::mpsc;
 use std::path::PathBuf;
 use std::fs;
-pub mod dirs;
+pub mod statics;
 mod db {
     pub mod sqlite3;
 }
@@ -90,7 +90,7 @@ fn main() {
     let mut log_file;
     match matches.value_of("logfile") {
         None => {
-            let data_local_dir = dirs::PROJECT_DIRS.data_local_dir();
+            let data_local_dir = statics::PROJECT_DIRS.data_local_dir();
             log_file = PathBuf::new();
             log_file.push(data_local_dir);
             log_file.push("netgrasp.log");
@@ -112,7 +112,7 @@ fn main() {
     info!("Writing to log file: {}", log_file.display());
     debug!("Available interfaces: {:?}", interfaces);
 
-    let configuration_directory = dirs::PROJECT_DIRS.config_dir();
+    let configuration_directory = statics::PROJECT_DIRS.config_dir();
     debug!("Configuration path: {}", configuration_directory.display());
 
     // We require an interface so unwrap() is safe here.
@@ -126,14 +126,11 @@ fn main() {
         net::arp::listen(iface, arp_tx);
     });
 
-    db::sqlite3::create_database();
+    let netgrasp_db = db::sqlite3::NetgraspDb::new();
+    netgrasp_db.create_database();
 
     loop {
         let received = arp_rx.recv().unwrap();
-        //println!("{}: ARP {:?} packet from {} {} targeting {} {}", 
-        //    received.interface, received.operation,
-        //    received.src_ip.to_string(), received.src_mac.to_string(),
-        //    received.tgt_ip.to_string(), received.tgt_mac.to_string());
-        db::sqlite3::log_arp_packet(received);
+        netgrasp_db.log_arp_packet(received);
     }
 }

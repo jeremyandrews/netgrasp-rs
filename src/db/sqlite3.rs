@@ -3,372 +3,369 @@ use sqlite::Value;
 use dns_lookup::{lookup_addr};
 use eui48::MacAddress;
 use oui::OuiDatabase;
-use crate::dirs::PROJECT_DIRS;
+use crate::statics::PROJECT_DIRS;
 use std::path::PathBuf;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
-// @TODO: I assume we should be holding onto this connection rather than instantiating it
-// over and over. Perhaps a global, or a local static, or ...?
-pub fn get_database_connection() -> sqlite::Connection {
-    sqlite::open("./netgrasp.db").unwrap()
+pub struct NetgraspDb {
+    connection: sqlite::Connection,
 }
 
-// Creates all the necessary tables and indexes, if not already existing.
-pub fn create_database() {
-    let connection = get_database_connection();
-
-    // Track each MAC address seen.
-    connection.execute(
-        "CREATE TABLE IF NOT EXISTS mac (
-            mac_id  INTEGER PRIMARY KEY,
-            vendor_id  INTEGER,
-            address TEXT,
-            is_self INTEGER,
-            created TIMESTAMP,
-            updated TIMESTAMP
-        )").unwrap();
-    connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxmac_address ON mac (address)").unwrap();
-
-    // Track each IP address seen.
-    connection.execute(
-        "CREATE TABLE IF NOT EXISTS ip (
-            ip_id INTEGER PRIMARY KEY,
-            mac_id INTEGER,
-            address TEXT,
-            host_name TEXT,
-            custom_name TEXT,
-            created TIMESTAMP,
-            updated TIMESTAMP
-        )").unwrap();
-    connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_address_macid ON mac (address, mac_id)").unwrap();
-    //connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (ip_id, mac_id)").unwrap();
-    //connection.execute("CREATE INDEX IF NOT EXISTS idxip_address_mid_created ON ip (address, mac_id, created)").unwrap();
-    //connection.execute("CREATE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (mac_id, ip_id)").unwrap();
-
-    connection.execute(
-        "CREATE TABLE IF NOT EXISTS vendor(
-            vendor_id INTEGER PRIMARY KEY,
-            name VARCHAR UNIQUE,
-            full_name VARCHAR UNIQUE,
-            created TIMESTAMP
-        )").unwrap();
-
-    // Log full details about each ARP packet seen.
-    connection.execute(
-        "CREATE TABLE IF NOT EXISTS arp (
-            arp_id INTEGER PRIMARY KEY,
-            interface TEXT,
-            src_mac_id INTEGER,
-            src_ip_id INTEGER,
-            tgt_ip_id INTEGER,
-            src_mac TEXT,
-            src_ip TEXT,
-            tgt_mac TEXT,
-            tgt_ip TEXT,
-            operation INTEGER,
-            matched INTEGER,
-            created TIMESTAMP
-        )").unwrap();
-    connection.execute("CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation)").unwrap();
-}
-
-pub fn get_vendor_id(name: String, full_name: String) -> i64 {
-    let connection = get_database_connection();
-
-    trace!("SELECT vendor_id FROM vendor WHERE name = '{}' AND full_name = '{}';", &name, &full_name);
-    let mut cursor = connection
-        .prepare("SELECT vendor_id FROM vendor WHERE name = ? AND full_name = ?")
-        .unwrap()
-        .cursor();
-    let bound_name = &name;
-    let bound_full_name = &full_name;
-    cursor.bind(&[
-        Value::String(bound_name.to_string()),
-        Value::String(bound_full_name.to_string()),
-    ]).unwrap();
-
-    // If this vendor exists, simply return the vendor_id.
-    if let Some(row) = cursor.next().unwrap() {
-        // Return the vendor_id.
-        row[0].as_integer().unwrap()
-    }
-    // If this mac address doesn't exist, add it.
-    else {
-        // @TODO: trigger new_vendor event.
-        info!("detected new vendor({} [{}])", &full_name, &name);
-
-        trace!("INSERT INTO vendor (name, full_name) VALUES('{}', '{}');", &name, &full_name);
-        let mut statement = connection.prepare("INSERT INTO vendor (name, full_name) VALUES(?, ?)").unwrap();
-        let bound_name: &str = &name;
-        statement.bind(1, bound_name).unwrap();
-        let bound_full_name: &str = &full_name;
-        statement.bind(2, bound_full_name).unwrap();
-        statement.next().unwrap();
-        // Recursively determine the vendor_id we just added.
-        get_vendor_id(name, full_name)
-    }
-}
-
-// Retreives mac_id of mac address, adding if not already seen.
-pub fn get_mac_id(mac_address: String, is_self: i64) -> i64 {
-    let connection = get_database_connection();
-
-    // @TODO: use the same text for debug and generating the actual query.
-    trace!("SELECT mac_id, is_self FROM mac WHERE address = '{}';", &mac_address);
-    let mut cursor = connection
-        .prepare("SELECT mac_id, is_self FROM mac WHERE address = ?")
-        .unwrap()
-        .cursor();
-    let bound_mac_address = &mac_address;
-    cursor.bind(&[Value::String(bound_mac_address.to_string())]).unwrap();
-
-    // If this mac address exists, simply return the mac_id.
-    if let Some(row) = cursor.next().unwrap() {
-        let existing_is_self = row[1].as_integer().unwrap();
-        debug_assert!(existing_is_self == is_self);
-        // Return the mac_id.
-        row[0].as_integer().unwrap()
-    }
-    // If this mac address doesn't exist, add it.
-    else {
-        // @TODO: download manuf file on initial run (see oui package)
-        // @TODO: only build this database once.
-        let data_local_dir = PROJECT_DIRS.data_local_dir();
-        let mut db_path = PathBuf::from(data_local_dir);
-        db_path.push("manuf.txt");
-        debug!("attempting to read from ouf database: {:?}", &db_path);
-        let db;
-        if db_path.exists() {
-            db = OuiDatabase::new_from_file(db_path.to_str().unwrap()).unwrap();
+impl NetgraspDb {
+    pub fn new() -> Self {
+        NetgraspDb {
+            connection: sqlite::open("./netgrasp.db").unwrap(),
         }
-        else {
-            // Netgrasp will auto-install Wireshark's manuf file for vendor lookups.
-            warn!("Required ouf database (for vendor-lookups) not found: {:?}", &db_path);
-            let manuf_url: &str = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf";
-            warn!("Downloading ouf database from {} ...", &manuf_url);
-            let body = reqwest::get(manuf_url).unwrap().text();
-            let new_file = File::create(&db_path).expect("Unable to create ouf database file.");
-            let mut new_file = BufWriter::new(new_file);
-            new_file.write_all(body.unwrap().as_bytes()).expect("Unable to write data");
-            db = OuiDatabase::new_from_file(db_path.to_str().unwrap()).unwrap();
-        }
-        let formatted_mac_address = MacAddress::parse_str(&mac_address).unwrap();
-        let vendor = db.query_by_mac(&formatted_mac_address).unwrap();
-        let name_short: String;
-        let name_long: String;
-        match vendor {
-            Some(details) => {
-                name_short = details.name_short;
-                match details.name_long {
-                    Some(name) => {
-                        name_long = name;
-                    }
-                    None => {
-                        name_long = name_short.clone();
-                    }
-                }
-            }
-            None => {
-                // @TODO: Review these, perhaps perform a remote API call as a backup?
-                name_short = "Unknown".to_string();
-                name_long = "Unknown".to_string();
-                info!("vendor lookup of mac_address({}) failed", &mac_address);
-            }
-
-        }
-        // Look up vendor_id, creating if necessary.
-        let vendor_id = get_vendor_id(name_short.clone(), name_long.clone());
-
-        // @TODO: trigger new_mac event.
-        info!("detected new mac_address({}) with vendor({}) [{}]", &mac_address, &name_long, &name_short);
-
-        trace!("INSERT INTO mac (address, is_self, vendor_id) VALUES('{}', {}, {});", &mac_address, is_self, vendor_id);
-        let mut statement = connection.prepare("INSERT INTO mac (address, is_self, vendor_id) VALUES(?, ?, ?)").unwrap();
-        let bound_mac_address: &str = &mac_address;
-        statement.bind(1, bound_mac_address).unwrap();
-        statement.bind(2, is_self).unwrap();
-        statement.bind(3, vendor_id).unwrap();
-        statement.next().unwrap();
-        // Recursively determine the mac_id of the mac address we just added.
-        get_mac_id(mac_address, is_self)
-    }
-}
-
-// Retreives ip_id of ip address, adding if not already seen.
-pub fn get_ip_id(ip_address: String, mac_id: i64) -> i64 {
-    let connection = get_database_connection();
-
-    debug_assert!(ip_address != "0.0.0.0");
-
-    let mut cursor;
-    // If the IP address doesn't have an associated mac_id, see if we can query it from our database.
-    if mac_id == 0 {
-        // @TODO: if ip.address == ip.host_name, perhaps perform another reverse IP lookup.
-        // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
-        // simply respect the DNS ttl?
-        trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}';", &ip_address);
-        cursor = connection
-            .prepare("SELECT ip_id, mac_id FROM ip WHERE address = ?")
-            .unwrap()
-            .cursor();
-        let bound_ip_address = &ip_address;
-        cursor.bind(&[Value::String(bound_ip_address.to_string())]).unwrap();
-    }
-    // While this IP address does have an associated mac_id, it may not yet be in our database (mac_id = 0).
-    else {
-        trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}' AND (mac_id = {} OR mac_id = 0);", &ip_address, mac_id);
-        cursor = connection
-            .prepare("SELECT ip_id, mac_id FROM ip WHERE address = ? AND (mac_id = ? OR mac_id = 0)")
-            .unwrap()
-            .cursor();
-        let bound_ip_address = &ip_address;
-        cursor.bind(&[Value::String(bound_ip_address.to_string()), Value::Integer(mac_id)]).unwrap();
     }
 
-    // We have seen this IP before, return the ip_id.
-    if let Some(row) = cursor.next().unwrap() {
-        // While we've seen the IP before, we may not have seen the associated MAC address.
-        if mac_id != 0 {
-            let existing_mac_id = row[1].as_integer().unwrap();
-            // We're seeing the MAC associated with this IP for the first time, update it.
-            if existing_mac_id == 0 {
-                info!("UPDATE ip SET mac_id = {} WHERE address = '{}';", mac_id, &ip_address);
-                let mut cursor = connection
-                    .prepare("UPDATE ip SET mac_id = ? WHERE address = ?")
-                    .unwrap()
-                    .cursor();
-                let bound_ip_address = &ip_address;
-                cursor.bind(&[
-                    Value::Integer(mac_id),
-                    Value::String(bound_ip_address.to_string())
-                ]).unwrap();
-                cursor.next().unwrap();
-            }
-        }
-        // Return the ip_id.
-        row[0].as_integer().unwrap()
-    }
-    // We're seeing this IP for the first time, add it to the database.
-    else {
-        let ip: std::net::IpAddr = ip_address.parse().unwrap();
-        let host_name = lookup_addr(&ip).unwrap();
-        info!("detected new hostname({}) with (ip address, mac_id) pair: ({}, {})", &host_name, &ip_address, mac_id);
+    // Record each ARP packet we see.
+    pub fn log_arp_packet(&self, arp_packet: crate::net::arp::NetgraspArpPacket) {
+        trace!("log_arp_packet: {:?}", arp_packet);
 
-        trace!("INSERT INTO ip (address, mac_id, host_name) VALUES('{}', {}, '{}');", &ip_address, mac_id, &host_name);
-        let mut statement = connection.prepare("INSERT INTO ip (address, mac_id, host_name) VALUES(?, ?, ?)").unwrap();
-        let bound_ip_address: &str = &ip_address;
-        statement.bind(1, bound_ip_address).unwrap();
-        statement.bind(2, mac_id).unwrap();
-        let bound_host_name: &str = &host_name;
-        statement.bind(3, bound_host_name).unwrap();
-        statement.next().unwrap();
-        // @TODO: trigger new_ip event.
-        // Recursively determine the ip_id of the IP address we just added.
-        get_ip_id(ip_address, mac_id)
-    }
-}
+        let mut src_mac_id: i64 = 0;
+        let mut tgt_ip_id: i64 = 0;
+        let mut src_ip_id: i64 = 0;
+        let operation: i64;
 
-// Record each ARP packet we see.
-pub fn log_arp_packet(arp_packet: crate::net::arp::NetgraspArpPacket) {
-    trace!("log_arp_packet: {:?}", arp_packet);
-
-    let mut src_mac_id: i64 = 0;
-    let mut tgt_ip_id: i64 = 0;
-    let mut src_ip_id: i64 = 0;
-    let operation: i64;
-
-    match arp_packet.operation {
-        ArpOperation::Request => {
-            trace!("ARP request");
-            // A MAC broadcast isn't a real MAC address, so don't store it.
-            if arp_packet.src_is_broadcast {
-                debug!("ignoring arp broadcast source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
-            }
-            // Log all non-broadcast mac addresses.
-            else {
-                src_mac_id = get_mac_id(arp_packet.src_mac.to_string(), arp_packet.src_is_self as i64);
-            }
-
-            if arp_packet.src_ip != arp_packet.tgt_ip && arp_packet.src_mac != arp_packet.tgt_mac {
+        match arp_packet.operation {
+            ArpOperation::Request => {
+                trace!("ARP request");
                 // A MAC broadcast isn't a real MAC address, so don't store it.
-                if arp_packet.tgt_is_broadcast {
-                    debug!("ignoring arp broadcast target of {} [{}]", arp_packet.tgt_ip, arp_packet.tgt_mac)
+                if arp_packet.src_is_broadcast {
+                    debug!("ignoring arp broadcast source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
                 }
-                // Log all non-broadcast IP addresses.
+                // Log all non-broadcast mac addresses.
                 else {
-                    // This is an ARP Request, we see an IP address without a MAC address.
-                    tgt_ip_id = get_ip_id(arp_packet.tgt_ip.to_string(), 0);
+                    src_mac_id = self.get_mac_id(arp_packet.src_mac.to_string(), arp_packet.src_is_self as i64);
+                }
+
+                if arp_packet.src_ip != arp_packet.tgt_ip && arp_packet.src_mac != arp_packet.tgt_mac {
+                    // A MAC broadcast isn't a real MAC address, so don't store it.
+                    if arp_packet.tgt_is_broadcast {
+                        debug!("ignoring arp broadcast target of {} [{}]", arp_packet.tgt_ip, arp_packet.tgt_mac)
+                    }
+                    // Log all non-broadcast IP addresses.
+                    else {
+                        // This is an ARP Request, we see an IP address without a MAC address.
+                        tgt_ip_id = self.get_ip_id(arp_packet.tgt_ip.to_string(), 0);
+                    }
+                }
+                operation = 0;
+            }
+            ArpOperation::Reply => {
+                trace!("ARP reply");
+                // A MAC broadcast isn't a real MAC address, so don't store it.
+                if arp_packet.src_is_broadcast {
+                    debug!("ignoring arp broadcast source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
+                }
+                // Log all non-broadcast mac addresses.
+                else {
+                    src_mac_id = self.get_mac_id(arp_packet.src_mac.to_string(), arp_packet.src_is_self as i64);
+                }
+                operation = 1;
+            }
+            _ => {
+                info!("invalid ARP packet: {:?}", arp_packet);
+                operation = -1;
+            }
+        }
+
+        // We have a valid MAC address to associate with the IP address.
+        if src_mac_id != 0 {
+            debug!("source mac_id: {}", src_mac_id);
+            // We don't record the broadcast of 0.0.0.0.
+            if arp_packet.src_ip.to_string() == "0.0.0.0" {
+                debug!("ignoring arp ip source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
+            }
+            // Record all other addresses.
+            else {
+                src_ip_id = self.get_ip_id(arp_packet.src_ip.to_string(), src_mac_id);
+                debug!("source ip_id: {}", src_ip_id);
+            }
+        }
+
+        // We recorded the target IP in our database.
+        if tgt_ip_id != 0 {
+            debug!("target ip_id: {}", tgt_ip_id);
+        }
+
+        // @TODO
+        let matched = 0;
+        // @TODO
+        let created = 0;
+        trace!("INSERT INTO arp (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created) VALUES('{}', {}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {});",
+            &arp_packet.interface, src_mac_id, src_ip_id, tgt_ip_id, arp_packet.src_mac.to_string(), arp_packet.src_ip.to_string(), arp_packet.tgt_mac.to_string(), arp_packet.tgt_ip.to_string(), operation, matched, created);
+        let mut statement = self.connection.prepare("INSERT INTO arp
+            (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created)
+            VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").unwrap();
+        let bound_interface: &str = &arp_packet.interface;
+        statement.bind(1, bound_interface).unwrap();
+        statement.bind(2, src_mac_id).unwrap();
+        statement.bind(3, src_ip_id).unwrap();
+        statement.bind(4, tgt_ip_id).unwrap();
+        let bound_src_mac: &str = &arp_packet.src_mac.to_string();
+        statement.bind(5, bound_src_mac).unwrap();
+        let bound_src_ip: &str = &arp_packet.src_ip.to_string();
+        statement.bind(6, bound_src_ip).unwrap();
+        let bound_tgt_mac: &str = &arp_packet.tgt_mac.to_string();
+        statement.bind(7, bound_tgt_mac).unwrap();
+        let bound_tgt_ip: &str = &arp_packet.tgt_ip.to_string();
+        statement.bind(8, bound_tgt_ip).unwrap();
+        statement.bind(9, operation).unwrap();
+        statement.bind(10, matched).unwrap();
+        statement.bind(11, created).unwrap();
+        statement.next().unwrap();
+    }
+
+    // Creates all the necessary tables and indexes, if not already existing.
+    pub fn create_database(&self) {
+        // Track each MAC address seen.
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS mac (
+                mac_id  INTEGER PRIMARY KEY,
+                vendor_id  INTEGER,
+                address TEXT,
+                is_self INTEGER,
+                created TIMESTAMP,
+                updated TIMESTAMP
+            )").unwrap();
+        self.connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxmac_address ON mac (address)").unwrap();
+
+        // Track each IP address seen.
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS ip (
+                ip_id INTEGER PRIMARY KEY,
+                mac_id INTEGER,
+                address TEXT,
+                host_name TEXT,
+                custom_name TEXT,
+                created TIMESTAMP,
+                updated TIMESTAMP
+            )").unwrap();
+        self.connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_address_macid ON mac (address, mac_id)").unwrap();
+        //self.connection.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (ip_id, mac_id)").unwrap();
+        //self.connection.execute("CREATE INDEX IF NOT EXISTS idxip_address_mid_created ON ip (address, mac_id, created)").unwrap();
+        //self.connection.execute("CREATE INDEX IF NOT EXISTS idxip_macid_ipid ON ip (mac_id, ip_id)").unwrap();
+
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS vendor(
+                vendor_id INTEGER PRIMARY KEY,
+                name VARCHAR UNIQUE,
+                full_name VARCHAR UNIQUE,
+                created TIMESTAMP
+            )").unwrap();
+
+        // Log full details about each ARP packet seen.
+        self.connection.execute(
+            "CREATE TABLE IF NOT EXISTS arp (
+                arp_id INTEGER PRIMARY KEY,
+                interface TEXT,
+                src_mac_id INTEGER,
+                src_ip_id INTEGER,
+                tgt_ip_id INTEGER,
+                src_mac TEXT,
+                src_ip TEXT,
+                tgt_mac TEXT,
+                tgt_ip TEXT,
+                operation INTEGER,
+                matched INTEGER,
+                created TIMESTAMP
+            )").unwrap();
+        self.connection.execute("CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation)").unwrap();
+    }
+
+    fn get_vendor_id(&self, name: String, full_name: String) -> i64 {
+        trace!("SELECT vendor_id FROM vendor WHERE name = '{}' AND full_name = '{}';", &name, &full_name);
+        let mut cursor = self.connection
+            .prepare("SELECT vendor_id FROM vendor WHERE name = ? AND full_name = ?")
+            .unwrap()
+            .cursor();
+        let bound_name = &name;
+        let bound_full_name = &full_name;
+        cursor.bind(&[
+            Value::String(bound_name.to_string()),
+            Value::String(bound_full_name.to_string()),
+        ]).unwrap();
+
+        // If this vendor exists, simply return the vendor_id.
+        if let Some(row) = cursor.next().unwrap() {
+            // Return the vendor_id.
+            row[0].as_integer().unwrap()
+        }
+        // If this mac address doesn't exist, add it.
+        else {
+            // @TODO: trigger new_vendor event.
+            info!("detected new vendor({} [{}])", &full_name, &name);
+
+            trace!("INSERT INTO vendor (name, full_name) VALUES('{}', '{}');", &name, &full_name);
+            let mut statement = self.connection.prepare("INSERT INTO vendor (name, full_name) VALUES(?, ?)").unwrap();
+            let bound_name: &str = &name;
+            statement.bind(1, bound_name).unwrap();
+            let bound_full_name: &str = &full_name;
+            statement.bind(2, bound_full_name).unwrap();
+            statement.next().unwrap();
+            // Recursively determine the vendor_id we just added.
+            self.get_vendor_id(name, full_name)
+        }
+    }
+
+    // Retreives mac_id of mac address, adding if not already seen.
+    fn get_mac_id(&self, mac_address: String, is_self: i64) -> i64 {
+        // @TODO: use the same text for debug and generating the actual query.
+        trace!("SELECT mac_id, is_self FROM mac WHERE address = '{}';", &mac_address);
+        let mut cursor = self.connection
+            .prepare("SELECT mac_id, is_self FROM mac WHERE address = ?")
+            .unwrap()
+            .cursor();
+        let bound_mac_address = &mac_address;
+        cursor.bind(&[Value::String(bound_mac_address.to_string())]).unwrap();
+
+        // If this mac address exists, simply return the mac_id.
+        if let Some(row) = cursor.next().unwrap() {
+            let existing_is_self = row[1].as_integer().unwrap();
+            debug_assert!(existing_is_self == is_self);
+            // Return the mac_id.
+            row[0].as_integer().unwrap()
+        }
+        // If this mac address doesn't exist, add it.
+        else {
+            // @TODO: download manuf file on initial run (see oui package)
+            // @TODO: only build this database once.
+            let data_local_dir = PROJECT_DIRS.data_local_dir();
+            let mut db_path = PathBuf::from(data_local_dir);
+            db_path.push("manuf.txt");
+            debug!("attempting to read from ouf database: {:?}", &db_path);
+            let db;
+            if db_path.exists() {
+                db = OuiDatabase::new_from_file(db_path.to_str().unwrap()).unwrap();
+            }
+            else {
+                // Netgrasp will auto-install Wireshark's manuf file for vendor lookups.
+                info!("Required ouf database (for vendor-lookups) not found: {:?}", &db_path);
+                let manuf_url: &str = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf";
+                info!("Downloading ouf database from {} ...", &manuf_url);
+                let body = reqwest::get(manuf_url).unwrap().text();
+                let new_file = File::create(&db_path).expect("Unable to create ouf database file.");
+                let mut new_file = BufWriter::new(new_file);
+                new_file.write_all(body.unwrap().as_bytes()).expect("Unable to write data");
+                db = OuiDatabase::new_from_file(db_path.to_str().unwrap()).unwrap();
+            }
+            let formatted_mac_address = MacAddress::parse_str(&mac_address).unwrap();
+            let vendor = db.query_by_mac(&formatted_mac_address).unwrap();
+            let name_short: String;
+            let name_long: String;
+            match vendor {
+                Some(details) => {
+                    name_short = details.name_short;
+                    match details.name_long {
+                        Some(name) => {
+                            name_long = name;
+                        }
+                        None => {
+                            name_long = name_short.clone();
+                        }
+                    }
+                }
+                None => {
+                    // @TODO: Review these, perhaps perform a remote API call as a backup?
+                    name_short = "Unknown".to_string();
+                    name_long = "Unknown".to_string();
+                    info!("vendor lookup of mac_address({}) failed", &mac_address);
+                }
+
+            }
+            // Look up vendor_id, creating if necessary.
+            let vendor_id = self.get_vendor_id(name_short.clone(), name_long.clone());
+
+            // @TODO: trigger new_mac event.
+            info!("detected new mac_address({}) with vendor({}) [{}]", &mac_address, &name_long, &name_short);
+
+            trace!("INSERT INTO mac (address, is_self, vendor_id) VALUES('{}', {}, {});", &mac_address, is_self, vendor_id);
+            let mut statement = self.connection.prepare("INSERT INTO mac (address, is_self, vendor_id) VALUES(?, ?, ?)").unwrap();
+            let bound_mac_address: &str = &mac_address;
+            statement.bind(1, bound_mac_address).unwrap();
+            statement.bind(2, is_self).unwrap();
+            statement.bind(3, vendor_id).unwrap();
+            statement.next().unwrap();
+            // Recursively determine the mac_id of the mac address we just added.
+            self.get_mac_id(mac_address, is_self)
+        }
+    }
+
+    // Retreives ip_id of ip address, adding if not already seen.
+    pub fn get_ip_id(&self, ip_address: String, mac_id: i64) -> i64 {
+        debug_assert!(ip_address != "0.0.0.0");
+
+        let mut cursor;
+        // If the IP address doesn't have an associated mac_id, see if we can query it from our database.
+        if mac_id == 0 {
+            // @TODO: if ip.address == ip.host_name, perhaps perform another reverse IP lookup.
+            // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
+            // simply respect the DNS ttl?
+            trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}';", &ip_address);
+            cursor = self.connection
+                .prepare("SELECT ip_id, mac_id FROM ip WHERE address = ?")
+                .unwrap()
+                .cursor();
+            let bound_ip_address = &ip_address;
+            cursor.bind(&[Value::String(bound_ip_address.to_string())]).unwrap();
+        }
+        // While this IP address does have an associated mac_id, it may not yet be in our database (mac_id = 0).
+        else {
+            trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}' AND (mac_id = {} OR mac_id = 0);", &ip_address, mac_id);
+            cursor = self.connection
+                .prepare("SELECT ip_id, mac_id FROM ip WHERE address = ? AND (mac_id = ? OR mac_id = 0)")
+                .unwrap()
+                .cursor();
+            let bound_ip_address = &ip_address;
+            cursor.bind(&[Value::String(bound_ip_address.to_string()), Value::Integer(mac_id)]).unwrap();
+        }
+
+        // We have seen this IP before, return the ip_id.
+        if let Some(row) = cursor.next().unwrap() {
+            // While we've seen the IP before, we may not have seen the associated MAC address.
+            if mac_id != 0 {
+                let existing_mac_id = row[1].as_integer().unwrap();
+                // We're seeing the MAC associated with this IP for the first time, update it.
+                if existing_mac_id == 0 {
+                    info!("UPDATE ip SET mac_id = {} WHERE address = '{}';", mac_id, &ip_address);
+                    let mut cursor = self.connection
+                        .prepare("UPDATE ip SET mac_id = ? WHERE address = ?")
+                        .unwrap()
+                        .cursor();
+                    let bound_ip_address = &ip_address;
+                    cursor.bind(&[
+                        Value::Integer(mac_id),
+                        Value::String(bound_ip_address.to_string())
+                    ]).unwrap();
+                    cursor.next().unwrap();
                 }
             }
-            operation = 0;
+            // Return the ip_id.
+            row[0].as_integer().unwrap()
         }
-        ArpOperation::Reply => {
-            trace!("ARP reply");
-            // A MAC broadcast isn't a real MAC address, so don't store it.
-            if arp_packet.src_is_broadcast {
-                debug!("ignoring arp broadcast source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
-            }
-            // Log all non-broadcast mac addresses.
-            else {
-                src_mac_id = get_mac_id(arp_packet.src_mac.to_string(), arp_packet.src_is_self as i64);
-            }
-            operation = 1;
-        }
-        _ => {
-            info!("invalid ARP packet: {:?}", arp_packet);
-            operation = -1;
-        }
-    }
-
-    // We have a valid MAC address to associate with the IP address.
-    if src_mac_id != 0 {
-        debug!("source mac_id: {}", src_mac_id);
-        // We don't record the broadcast of 0.0.0.0.
-        if arp_packet.src_ip.to_string() == "0.0.0.0" {
-            debug!("ignoring arp ip source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
-        }
-        // Record all other addresses.
+        // We're seeing this IP for the first time, add it to the database.
         else {
-            src_ip_id = get_ip_id(arp_packet.src_ip.to_string(), src_mac_id);
-            debug!("source ip_id: {}", src_ip_id);
+            let ip: std::net::IpAddr = ip_address.parse().unwrap();
+            let host_name = lookup_addr(&ip).unwrap();
+            info!("detected new hostname({}) with (ip address, mac_id) pair: ({}, {})", &host_name, &ip_address, mac_id);
+
+            trace!("INSERT INTO ip (address, mac_id, host_name) VALUES('{}', {}, '{}');", &ip_address, mac_id, &host_name);
+            let mut statement = self.connection.prepare("INSERT INTO ip (address, mac_id, host_name) VALUES(?, ?, ?)").unwrap();
+            let bound_ip_address: &str = &ip_address;
+            statement.bind(1, bound_ip_address).unwrap();
+            statement.bind(2, mac_id).unwrap();
+            let bound_host_name: &str = &host_name;
+            statement.bind(3, bound_host_name).unwrap();
+            statement.next().unwrap();
+            // @TODO: trigger new_ip event.
+            // Recursively determine the ip_id of the IP address we just added.
+            self.get_ip_id(ip_address, mac_id)
         }
     }
-
-    // We recorded the target IP in our database.
-    if tgt_ip_id != 0 {
-        debug!("target ip_id: {}", tgt_ip_id);
-    }
-
-    // @TODO: log ARP
-    let connection = get_database_connection();
-    // @TODO
-    let matched = 0;
-    // @TODO
-    let created = 0;
-    trace!("INSERT INTO arp (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created) VALUES('{}', {}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {});",
-        &arp_packet.interface, src_mac_id, src_ip_id, tgt_ip_id, arp_packet.src_mac.to_string(), arp_packet.src_ip.to_string(), arp_packet.tgt_mac.to_string(), arp_packet.tgt_ip.to_string(), operation, matched, created);
-    let mut statement = connection.prepare("INSERT INTO arp
-        (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created)
-        VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").unwrap();
-    let bound_interface: &str = &arp_packet.interface;
-    statement.bind(1, bound_interface).unwrap();
-    statement.bind(2, src_mac_id).unwrap();
-    statement.bind(3, src_ip_id).unwrap();
-    statement.bind(4, tgt_ip_id).unwrap();
-    let bound_src_mac: &str = &arp_packet.src_mac.to_string();
-    statement.bind(5, bound_src_mac).unwrap();
-    let bound_src_ip: &str = &arp_packet.src_ip.to_string();
-    statement.bind(6, bound_src_ip).unwrap();
-    let bound_tgt_mac: &str = &arp_packet.tgt_mac.to_string();
-    statement.bind(7, bound_tgt_mac).unwrap();
-    let bound_tgt_ip: &str = &arp_packet.tgt_ip.to_string();
-    statement.bind(8, bound_tgt_ip).unwrap();
-    statement.bind(9, operation).unwrap();
-    statement.bind(10, matched).unwrap();
-    statement.bind(11, created).unwrap();
-    statement.next().unwrap();
 }
+
 
 // Python Netgrasp DB Schema:
 //
