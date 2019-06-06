@@ -5,7 +5,6 @@ A passive network observation tool.
 Rewriting Netgrasp in Rust.
 <https://github.com/jeremyandrews/netgrasp>
 
-
 ## Details
 
 * Leverages [smoltcp](https://lib.rs/crates/smoltcp) to monitor a network interface for ARP packets.
@@ -36,7 +35,6 @@ Rewriting Netgrasp in Rust.
     * handle the ethernet interface going away (gracefully shutdown? or sleep and retry?)
     * handle bad packets
     * handle SQL errors
-    * handle missing oui vendor lookup file
     * thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: Custom { kind: Other, error: StringError("failed to lookup address information: Temporary failure in name resolution") }', src/libcore/result.rs:997:5:
     ```
     8: core::result::unwrap_failed
@@ -46,6 +44,5 @@ Rewriting Netgrasp in Rust.
     10: netgrasp::db::sqlite3::NetgraspDb::get_ip_id
         at src/db/sqlite3.rs:351
     ```
-1. Provide option for manually updating manuf.txt
-    * consider replacing reqwest with [hyper](https://github.com/hyperium/hyper) as our needs are simple, should reduce dependencies
+1. Implement tests
 1. Expose data and control through API

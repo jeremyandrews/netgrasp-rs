@@ -11,7 +11,6 @@ use std::thread;
 use std::sync::mpsc;
 use std::path::PathBuf;
 use std::fs;
-use std::io::{BufWriter, Write};
 pub mod statics;
 mod db {
     pub mod sqlite3;
@@ -65,6 +64,10 @@ fn main() {
             .value_name("DATABASE FILE")
             .help("Path of database file")
             .takes_value(true))
+        .arg(Arg::with_name("update")
+            .short("u")
+            .long("update")
+            .help("Update MAC addresses vendor db"))
         .arg(Arg::with_name("g")
             .short("g")
             .multiple(true)
@@ -120,6 +123,12 @@ fn main() {
     let configuration_directory = statics::PROJECT_DIRS.config_dir();
     debug!("Configuration path: {}", configuration_directory.display());
 
+    // Force update of OUF database for MAC vendor lookups.
+    if matches.is_present("update") {
+        let ouf_db_path = db::sqlite3::get_ouf_path();
+        db::sqlite3::download_ouf_database(ouf_db_path.to_str().unwrap());
+    }
+
     // We require an interface so unwrap() is safe here.
     let interface = matches.value_of("interface").unwrap();
     let iface: String = interface.to_string();
@@ -131,19 +140,12 @@ fn main() {
         net::arp::listen(iface, arp_tx);
     });
     
-    let data_local_dir = statics::PROJECT_DIRS.data_local_dir();
-    let mut ouf_db_path = PathBuf::from(data_local_dir);
-    ouf_db_path.push("manuf.txt");
+    let ouf_db_path = db::sqlite3::get_ouf_path();
     debug!("Loading ouf database from path: {:?}", &ouf_db_path);
     if !ouf_db_path.exists() {
         // Netgrasp will auto-install Wireshark's manuf file for vendor lookups.
         info!("Required ouf database (for vendor-lookups) not found: {:?}", &ouf_db_path);
-        let manuf_url: &str = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf";
-        info!("Downloading ouf database from {} ...", &manuf_url);
-        let body = reqwest::get(manuf_url).unwrap().text();
-        let new_file = File::create(&ouf_db_path).expect("Unable to create ouf database file.");
-        let mut new_file = BufWriter::new(new_file);
-        new_file.write_all(body.unwrap().as_bytes()).expect("Unable to write data");
+        db::sqlite3::download_ouf_database(ouf_db_path.to_str().unwrap());
     }
     let path_to_ouf_db: &str = ouf_db_path.to_str().unwrap();
 

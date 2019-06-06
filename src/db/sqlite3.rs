@@ -3,10 +3,33 @@ use sqlite::Value;
 use dns_lookup::{lookup_addr};
 use eui48::MacAddress;
 use oui::OuiDatabase;
+use std::fs::File;
+use std::io::{BufWriter, Write};
+use std::path::PathBuf;
+use crate::statics;
 
 pub struct NetgraspDb {
     sql: sqlite::Connection,
     oui: OuiDatabase,
+}
+
+// Return path to local OUF database file.
+pub fn get_ouf_path() -> std::path::PathBuf {
+    let data_local_dir = statics::PROJECT_DIRS.data_local_dir();
+    let mut ouf_db_path = PathBuf::from(data_local_dir);
+    ouf_db_path.push("manuf.txt");
+    ouf_db_path
+}
+
+// Download OUF database file to specified path.
+pub fn download_ouf_database(ouf_db_path: &str) {
+    let manuf_url: &str = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf";
+    info!("Downloading new ouf database from: {:?}", &manuf_url);
+    let body = reqwest::get(manuf_url).unwrap().text();
+    info!("Download complete, writing to file: {:?}", &ouf_db_path);
+    let new_file = File::create(&ouf_db_path).expect("Unable to create ouf database file.");
+    let mut new_file = BufWriter::new(new_file);
+    new_file.write_all(body.unwrap().as_bytes()).expect("Unable to write data");
 }
 
 impl NetgraspDb {
