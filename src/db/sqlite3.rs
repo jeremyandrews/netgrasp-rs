@@ -3,34 +3,30 @@ use sqlite::Value;
 use dns_lookup::{lookup_addr};
 use eui48::MacAddress;
 use oui::OuiDatabase;
-use std::fs::File;
-use std::io::{BufWriter, Write};
-use std::path::PathBuf;
-use crate::statics;
 
 pub struct NetgraspDb {
     sql: sqlite::Connection,
     oui: OuiDatabase,
 }
 
-// Return path to local OUF database file.
-pub fn get_ouf_path() -> std::path::PathBuf {
-    let data_local_dir = statics::PROJECT_DIRS.data_local_dir();
-    let mut ouf_db_path = PathBuf::from(data_local_dir);
-    ouf_db_path.push("manuf.txt");
-    ouf_db_path
+pub struct NetgraspEvent {
+    interface: String,
+    mac_id: i64,
+    ip_id: i64,
+    vendor_id: i64,
 }
 
-// Download OUF database file to specified path.
-pub fn download_ouf_database(ouf_db_path: &str) {
-    let manuf_url: &str = "https://code.wireshark.org/review/gitweb?p=wireshark.git;a=blob_plain;f=manuf";
-    info!("Downloading new ouf database from: {:?}", &manuf_url);
-    let body = reqwest::get(manuf_url).unwrap().text();
-    info!("Download complete, writing to file: {:?}", &ouf_db_path);
-    let new_file = File::create(&ouf_db_path).expect("Unable to create ouf database file.");
-    let mut new_file = BufWriter::new(new_file);
-    new_file.write_all(body.unwrap().as_bytes()).expect("Unable to write data");
-}
+const EVENT_MAC_SEEN: &str = "mac seen";
+const EVENT_MAC_SEEN_FIRST: &str = "mac first seen";
+const EVENT_IP_REQUEST_FIRST: &str = "ip first request";
+//const EVENT_IP_REQUEST_FIRST_RECENT: &str = "ip first recent request";
+const EVENT_IP_REQUEST: &str = "ip request";
+const EVENT_IP_SEEN: &str = "ip seen";
+const EVENT_IP_SEEN_FIRST: &str = "ip first seen";
+const EVENT_VENDOR_SEEN: &str = "vendor seen";
+const EVENT_VENDOR_SEEN_FIRST: &str = "vendor first seen";
+// EVENT_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE_RECENTLY, 
+// EVENT_STALE, EVENT_REQUEST_STALE, EVENT_CHANGED_IP, EVENT_DUPLICATE_IP, EVENT_DUPLICATE_MAC, EVENT_SCAN, EVENT_IP_NOT_ON_NETWORK, EVENT_SRC_MAC_BROADCAST, EVENT_REQUESTED_SELF = ALERT_TYPES
 
 impl NetgraspDb {
     pub fn new(sql_database_path: String, oui_database_path: String) -> Self {
@@ -139,6 +135,29 @@ impl NetgraspDb {
         statement.next().unwrap();
     }
 
+    pub fn log_event(&self, event_type: &str, mac_id: i64, ip_id: i64, vendor_id: i64) {
+        // @TODO: interface
+        let interface: &str = "";
+        // @TODO: network
+        let network: &str = "";
+        // @TODO: timestamp
+        let timestamp: i64 = 0;
+        trace!("INSERT INTO event (mac_id, ip_id, vendor_id, interface, network, description, timestamp) VALUES({}, {}, {}, '{}', '{}', '{}', {});",
+            mac_id, ip_id, vendor_id, interface, network, event_type, timestamp);
+        let mut statement = self.sql.prepare("INSERT INTO event (mac_id, ip_id, vendor_id, interface, network, description, timestamp) VALUES(?, ?, ?, ?, ?, ?, ?)").unwrap();
+        statement.bind(1, mac_id).unwrap();
+        statement.bind(2, ip_id).unwrap();
+        statement.bind(3, vendor_id).unwrap();
+        let bound_interface: &str = &interface;
+        statement.bind(4, bound_interface).unwrap();
+        let bound_network: &str = &network;
+        statement.bind(5, bound_network).unwrap();
+        let bound_description: &str = &event_type;
+        statement.bind(6, bound_description).unwrap();
+        statement.bind(7, timestamp).unwrap();
+        statement.next().unwrap();
+    }
+
     // Creates all the necessary tables and indexes, if not already existing.
     pub fn create_database(&self) {
         // Track each MAC address seen.
@@ -194,6 +213,22 @@ impl NetgraspDb {
                 created TIMESTAMP
             )").unwrap();
         self.sql.execute("CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation)").unwrap();
+
+        // Track events, allow notifications to be sent.
+        self.sql.execute(
+            "CREATE TABLE IF NOT EXISTS event (
+                event_id INTEGER PRIMARY KEY,
+                mac_id INTEGER,
+                ip_id INTEGER,
+                vendor_id INTEGER,
+                interface TEXT,
+                network TEXT,
+                description VARCHAR,
+                processed INTEGER,
+                timestamp TIMESTAMP
+            )").unwrap();
+        //self.sql.execute("CREATE INDEX IF NOT EXISTS idxevent_description_timestamp_processed ON event (description, timestamp, processed)").unwrap();
+        //self.sql.execute("CREATE INDEX IF NOT EXISTS idxevent_timestamp_processed ON event (timestamp, processed)").unwrap();
     }
 
     fn get_vendor_id(&self, name: String, full_name: String) -> i64 {
@@ -212,7 +247,9 @@ impl NetgraspDb {
         // If this vendor exists, simply return the vendor_id.
         if let Some(row) = cursor.next().unwrap() {
             // Return the vendor_id.
-            row[0].as_integer().unwrap()
+            let vendor_id = row[0].as_integer().unwrap();
+            self.log_event(EVENT_VENDOR_SEEN, 0, 0, vendor_id);
+            vendor_id
         }
         // If this mac address doesn't exist, add it.
         else {
@@ -227,7 +264,10 @@ impl NetgraspDb {
             statement.bind(2, bound_full_name).unwrap();
             statement.next().unwrap();
             // Recursively determine the vendor_id we just added.
-            self.get_vendor_id(name, full_name)
+            let vendor_id = self.get_vendor_id(name, full_name);
+            self.log_event(EVENT_VENDOR_SEEN_FIRST, 0, 0, vendor_id);
+            self.log_event(EVENT_VENDOR_SEEN, 0, 0, vendor_id);
+            vendor_id
         }
     }
 
@@ -246,8 +286,10 @@ impl NetgraspDb {
         if let Some(row) = cursor.next().unwrap() {
             let existing_is_self = row[1].as_integer().unwrap();
             debug_assert!(existing_is_self == is_self);
+            let mac_id = row[0].as_integer().unwrap();
+            self.log_event(EVENT_MAC_SEEN, mac_id, 0, 0);
             // Return the mac_id.
-            row[0].as_integer().unwrap()
+            mac_id
         }
         // If this mac address doesn't exist, add it.
         else {
@@ -277,8 +319,6 @@ impl NetgraspDb {
             }
             // Look up vendor_id, creating if necessary.
             let vendor_id = self.get_vendor_id(name_short.clone(), name_long.clone());
-
-            // @TODO: trigger new_mac event.
             info!("detected new mac_address({}) with vendor({}) [{}]", &mac_address, &name_long, &name_short);
 
             trace!("INSERT INTO mac (address, is_self, vendor_id) VALUES('{}', {}, {});", &mac_address, is_self, vendor_id);
@@ -289,7 +329,10 @@ impl NetgraspDb {
             statement.bind(3, vendor_id).unwrap();
             statement.next().unwrap();
             // Recursively determine the mac_id of the mac address we just added.
-            self.get_mac_id(mac_address, is_self)
+            let mac_id = self.get_mac_id(mac_address, is_self);
+            self.log_event(EVENT_MAC_SEEN_FIRST, mac_id, 0, 0);
+            self.log_event(EVENT_MAC_SEEN, mac_id, 0, 0);
+            mac_id
         }
     }
 
@@ -343,7 +386,15 @@ impl NetgraspDb {
                 }
             }
             // Return the ip_id.
-            row[0].as_integer().unwrap()
+            let ip_id = row[0].as_integer().unwrap();
+            if mac_id == 0 {
+                self.log_event(EVENT_IP_REQUEST, mac_id, ip_id, 0);
+            }
+            else {
+                self.log_event(EVENT_IP_SEEN, mac_id, ip_id, 0);
+                self.log_event(EVENT_IP_SEEN_FIRST, mac_id, ip_id, 0);
+            }
+            ip_id
         }
         // We're seeing this IP for the first time, add it to the database.
         else {
@@ -361,7 +412,16 @@ impl NetgraspDb {
             statement.next().unwrap();
             // @TODO: trigger new_ip event.
             // Recursively determine the ip_id of the IP address we just added.
-            self.get_ip_id(ip_address, mac_id)
+            let ip_id = self.get_ip_id(ip_address, mac_id);
+            if mac_id == 0 {
+                self.log_event(EVENT_IP_REQUEST_FIRST, mac_id, ip_id, 0);
+                self.log_event(EVENT_IP_REQUEST, mac_id, ip_id, 0);
+            }
+            else {
+                self.log_event(EVENT_IP_SEEN_FIRST, mac_id, ip_id, 0);
+                self.log_event(EVENT_IP_SEEN, mac_id, ip_id, 0);
+            }
+            ip_id
         }
     }
 }

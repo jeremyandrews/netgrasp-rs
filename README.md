@@ -24,6 +24,8 @@ Rewriting Netgrasp in Rust.
     * catch HUP signal and reload configuration
     * use TOML like rust (<https://crates.io/crates/toml)>
 1. Daemonize (<https://github.com/knsd/daemonize)>
+    * drop permissions where unnecessary
+1. Log/process events
 1. Notifications (email, other?)
     * to review (<https://crates.io/crates/mailstrom>)
     * to review (<https://crates.io/crates/lettre_email>)
@@ -35,14 +37,5 @@ Rewriting Netgrasp in Rust.
     * handle the ethernet interface going away (gracefully shutdown? or sleep and retry?)
     * handle bad packets
     * handle SQL errors
-    * thread 'main' panicked at 'called `Result::unwrap()` on an `Err` value: Custom { kind: Other, error: StringError("failed to lookup address information: Temporary failure in name resolution") }', src/libcore/result.rs:997:5:
-    ```
-    8: core::result::unwrap_failed
-        at /rustc/3c235d5600393dfe6c36eeed34042efad8d4f26e/src/libcore/macros.rs:18
-    9: core::result::Result<T,E>::unwrap
-        at /rustc/3c235d5600393dfe6c36eeed34042efad8d4f26e/src/libcore/result.rs:798
-    10: netgrasp::db::sqlite3::NetgraspDb::get_ip_id
-        at src/db/sqlite3.rs:351
-    ```
 1. Implement tests
 1. Expose data and control through API
