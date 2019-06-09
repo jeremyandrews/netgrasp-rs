@@ -28,6 +28,18 @@ const EVENT_VENDOR_SEEN_FIRST: &str = "vendor first seen";
 // EVENT_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE_RECENTLY, 
 // EVENT_STALE, EVENT_REQUEST_STALE, EVENT_CHANGED_IP, EVENT_DUPLICATE_IP, EVENT_DUPLICATE_MAC, EVENT_SCAN, EVENT_IP_NOT_ON_NETWORK, EVENT_SRC_MAC_BROADCAST, EVENT_REQUESTED_SELF = ALERT_TYPES
 
+impl NetgraspEvent {
+    pub fn new(interface: String) -> Self {
+        NetgraspEvent {
+            interface: interface,
+            mac_id: 0,
+            ip_id: 0,
+            vendor_id: 0,
+        }
+    }
+
+}
+
 impl NetgraspDb {
     pub fn new(sql_database_path: String, oui_database_path: String) -> Self {
         NetgraspDb {
@@ -40,10 +52,11 @@ impl NetgraspDb {
     pub fn log_arp_packet(&self, arp_packet: crate::net::arp::NetgraspArpPacket) {
         trace!("log_arp_packet: {:?}", arp_packet);
 
-        let mut src_mac_id: i64 = 0;
-        let mut tgt_ip_id: i64 = 0;
-        let mut src_ip_id: i64 = 0;
         let operation: i64;
+        // Object used to create events for the source side of the ARP message.
+        let mut netgrasp_event_src = NetgraspEvent::new(arp_packet.interface.clone());
+        // Object used to create events for the target side of the ARP message.
+        let mut netgrasp_event_tgt = NetgraspEvent::new(arp_packet.interface.clone());
 
         match arp_packet.operation {
             ArpOperation::Request => {
@@ -54,7 +67,7 @@ impl NetgraspDb {
                 }
                 // Log all non-broadcast mac addresses.
                 else {
-                    src_mac_id = self.get_mac_id(arp_packet.src_mac.to_string(), arp_packet.src_is_self as i64);
+                    netgrasp_event_src = self.load_mac_id(netgrasp_event_src, arp_packet.src_mac.to_string(), arp_packet.src_is_self as i64);
                 }
 
                 if arp_packet.src_ip != arp_packet.tgt_ip && arp_packet.src_mac != arp_packet.tgt_mac {
@@ -65,7 +78,7 @@ impl NetgraspDb {
                     // Log all non-broadcast IP addresses.
                     else {
                         // This is an ARP Request, we see an IP address without a MAC address.
-                        tgt_ip_id = self.get_ip_id(arp_packet.tgt_ip.to_string(), 0);
+                        netgrasp_event_tgt = self.load_ip_id(netgrasp_event_tgt, arp_packet.tgt_ip.to_string());
                     }
                 }
                 operation = 0;
@@ -78,7 +91,7 @@ impl NetgraspDb {
                 }
                 // Log all non-broadcast mac addresses.
                 else {
-                    src_mac_id = self.get_mac_id(arp_packet.src_mac.to_string(), arp_packet.src_is_self as i64);
+                    netgrasp_event_src = self.load_mac_id(netgrasp_event_src, arp_packet.src_mac.to_string(), arp_packet.src_is_self as i64);
                 }
                 operation = 1;
             }
@@ -89,22 +102,22 @@ impl NetgraspDb {
         }
 
         // We have a valid MAC address to associate with the IP address.
-        if src_mac_id != 0 {
-            debug!("source mac_id: {}", src_mac_id);
+        if netgrasp_event_src.mac_id != 0 {
+            debug!("source mac_id: {}", netgrasp_event_src.mac_id);
             // We don't record the broadcast of 0.0.0.0.
             if arp_packet.src_ip.to_string() == "0.0.0.0" {
                 debug!("ignoring arp ip source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
             }
             // Record all other addresses.
             else {
-                src_ip_id = self.get_ip_id(arp_packet.src_ip.to_string(), src_mac_id);
-                debug!("source ip_id: {}", src_ip_id);
+                netgrasp_event_src = self.load_ip_id(netgrasp_event_src, arp_packet.src_ip.to_string());
+                debug!("source ip_id: {}", netgrasp_event_src.ip_id);
             }
         }
 
         // We recorded the target IP in our database.
-        if tgt_ip_id != 0 {
-            debug!("target ip_id: {}", tgt_ip_id);
+        if netgrasp_event_tgt.ip_id != 0 {
+            debug!("target ip_id: {}", netgrasp_event_tgt.ip_id);
         }
 
         // @TODO
@@ -112,15 +125,15 @@ impl NetgraspDb {
         // @TODO
         let created = 0;
         trace!("INSERT INTO arp (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created) VALUES('{}', {}, {}, {}, '{}', '{}', '{}', '{}', {}, {}, {});",
-            &arp_packet.interface, src_mac_id, src_ip_id, tgt_ip_id, arp_packet.src_mac.to_string(), arp_packet.src_ip.to_string(), arp_packet.tgt_mac.to_string(), arp_packet.tgt_ip.to_string(), operation, matched, created);
+            &arp_packet.interface, netgrasp_event_src.mac_id, netgrasp_event_src.ip_id, netgrasp_event_tgt.ip_id, arp_packet.src_mac.to_string(), arp_packet.src_ip.to_string(), arp_packet.tgt_mac.to_string(), arp_packet.tgt_ip.to_string(), operation, matched, created);
         let mut statement = self.sql.prepare("INSERT INTO arp
             (interface, src_mac_id, src_ip_id, tgt_ip_id, src_mac, src_ip, tgt_mac, tgt_ip, operation, matched, created)
             VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)").unwrap();
         let bound_interface: &str = &arp_packet.interface;
         statement.bind(1, bound_interface).unwrap();
-        statement.bind(2, src_mac_id).unwrap();
-        statement.bind(3, src_ip_id).unwrap();
-        statement.bind(4, tgt_ip_id).unwrap();
+        statement.bind(2, netgrasp_event_src.mac_id).unwrap();
+        statement.bind(3, netgrasp_event_src.ip_id).unwrap();
+        statement.bind(4, netgrasp_event_tgt.ip_id).unwrap();
         let bound_src_mac: &str = &arp_packet.src_mac.to_string();
         statement.bind(5, bound_src_mac).unwrap();
         let bound_src_ip: &str = &arp_packet.src_ip.to_string();
@@ -135,20 +148,18 @@ impl NetgraspDb {
         statement.next().unwrap();
     }
 
-    pub fn log_event(&self, event_type: &str, mac_id: i64, ip_id: i64, vendor_id: i64) {
-        // @TODO: interface
-        let interface: &str = "";
+    pub fn log_event(&self, netgrasp_event: &NetgraspEvent, event_type: &str) {
         // @TODO: network
         let network: &str = "";
         // @TODO: timestamp
         let timestamp: i64 = 0;
         trace!("INSERT INTO event (mac_id, ip_id, vendor_id, interface, network, description, timestamp) VALUES({}, {}, {}, '{}', '{}', '{}', {});",
-            mac_id, ip_id, vendor_id, interface, network, event_type, timestamp);
+            netgrasp_event.mac_id, netgrasp_event.ip_id, netgrasp_event.vendor_id, netgrasp_event.interface, network, event_type, timestamp);
         let mut statement = self.sql.prepare("INSERT INTO event (mac_id, ip_id, vendor_id, interface, network, description, timestamp) VALUES(?, ?, ?, ?, ?, ?, ?)").unwrap();
-        statement.bind(1, mac_id).unwrap();
-        statement.bind(2, ip_id).unwrap();
-        statement.bind(3, vendor_id).unwrap();
-        let bound_interface: &str = &interface;
+        statement.bind(1, netgrasp_event.mac_id).unwrap();
+        statement.bind(2, netgrasp_event.ip_id).unwrap();
+        statement.bind(3, netgrasp_event.vendor_id).unwrap();
+        let bound_interface: &str = &netgrasp_event.interface;
         statement.bind(4, bound_interface).unwrap();
         let bound_network: &str = &network;
         statement.bind(5, bound_network).unwrap();
@@ -191,10 +202,11 @@ impl NetgraspDb {
         self.sql.execute(
             "CREATE TABLE IF NOT EXISTS vendor(
                 vendor_id INTEGER PRIMARY KEY,
-                name VARCHAR UNIQUE,
-                full_name VARCHAR UNIQUE,
+                name VARCHAR,
+                full_name VARCHAR,
                 created TIMESTAMP
             )").unwrap();
+        self.sql.execute("CREATE UNIQUE INDEX IF NOT EXISTS idxname_fullname ON vendor (name, full_name)").unwrap();
 
         // Log full details about each ARP packet seen.
         self.sql.execute(
@@ -231,7 +243,7 @@ impl NetgraspDb {
         //self.sql.execute("CREATE INDEX IF NOT EXISTS idxevent_timestamp_processed ON event (timestamp, processed)").unwrap();
     }
 
-    fn get_vendor_id(&self, name: String, full_name: String) -> i64 {
+    fn load_vendor_id(&self, mut netgrasp_event: NetgraspEvent, name: String, full_name: String) -> NetgraspEvent {
         trace!("SELECT vendor_id FROM vendor WHERE name = '{}' AND full_name = '{}';", &name, &full_name);
         let mut cursor = self.sql
             .prepare("SELECT vendor_id FROM vendor WHERE name = ? AND full_name = ?")
@@ -247,9 +259,9 @@ impl NetgraspDb {
         // If this vendor exists, simply return the vendor_id.
         if let Some(row) = cursor.next().unwrap() {
             // Return the vendor_id.
-            let vendor_id = row[0].as_integer().unwrap();
-            self.log_event(EVENT_VENDOR_SEEN, 0, 0, vendor_id);
-            vendor_id
+            netgrasp_event.vendor_id = row[0].as_integer().unwrap();
+            self.log_event(&netgrasp_event, EVENT_VENDOR_SEEN);
+            netgrasp_event
         }
         // If this mac address doesn't exist, add it.
         else {
@@ -264,15 +276,14 @@ impl NetgraspDb {
             statement.bind(2, bound_full_name).unwrap();
             statement.next().unwrap();
             // Recursively determine the vendor_id we just added.
-            let vendor_id = self.get_vendor_id(name, full_name);
-            self.log_event(EVENT_VENDOR_SEEN_FIRST, 0, 0, vendor_id);
-            self.log_event(EVENT_VENDOR_SEEN, 0, 0, vendor_id);
-            vendor_id
+            netgrasp_event = self.load_vendor_id(netgrasp_event, name, full_name);
+            self.log_event(&netgrasp_event, EVENT_VENDOR_SEEN_FIRST);
+            netgrasp_event
         }
     }
 
     // Retreives mac_id of mac address, adding if not already seen.
-    fn get_mac_id(&self, mac_address: String, is_self: i64) -> i64 {
+    fn load_mac_id(&self, mut netgrasp_event: NetgraspEvent, mac_address: String, is_self: i64) -> NetgraspEvent {
         // @TODO: use the same text for debug and generating the actual query.
         trace!("SELECT mac_id, is_self FROM mac WHERE address = '{}';", &mac_address);
         let mut cursor = self.sql
@@ -282,67 +293,65 @@ impl NetgraspDb {
         let bound_mac_address = &mac_address;
         cursor.bind(&[Value::String(bound_mac_address.to_string())]).unwrap();
 
+        let formatted_mac_address = MacAddress::parse_str(&mac_address).unwrap();
+        let vendor = self.oui.query_by_mac(&formatted_mac_address).unwrap();
+        let name_short: String;
+        let name_long: String;
+        match vendor {
+            Some(details) => {
+                name_short = details.name_short;
+                match details.name_long {
+                    Some(name) => {
+                        name_long = name;
+                    }
+                    None => {
+                        name_long = name_short.clone();
+                    }
+                }
+            }
+            None => {
+                // @TODO: Review these, perhaps perform a remote API call as a backup?
+                name_short = "Unknown".to_string();
+                name_long = "Unknown".to_string();
+                info!("vendor lookup of mac_address({}) failed", &mac_address);
+            }
+
+        }
+        // Look up vendor_id, creating if necessary.
+        netgrasp_event = self.load_vendor_id(netgrasp_event, name_short.clone(), name_long.clone());
+
         // If this mac address exists, simply return the mac_id.
         if let Some(row) = cursor.next().unwrap() {
             let existing_is_self = row[1].as_integer().unwrap();
             debug_assert!(existing_is_self == is_self);
-            let mac_id = row[0].as_integer().unwrap();
-            self.log_event(EVENT_MAC_SEEN, mac_id, 0, 0);
-            // Return the mac_id.
-            mac_id
+            netgrasp_event.mac_id = row[0].as_integer().unwrap();
+            self.log_event(&netgrasp_event, EVENT_MAC_SEEN);
+            netgrasp_event
         }
         // If this mac address doesn't exist, add it.
         else {
-            let formatted_mac_address = MacAddress::parse_str(&mac_address).unwrap();
-            let vendor = self.oui.query_by_mac(&formatted_mac_address).unwrap();
-            let name_short: String;
-            let name_long: String;
-            match vendor {
-                Some(details) => {
-                    name_short = details.name_short;
-                    match details.name_long {
-                        Some(name) => {
-                            name_long = name;
-                        }
-                        None => {
-                            name_long = name_short.clone();
-                        }
-                    }
-                }
-                None => {
-                    // @TODO: Review these, perhaps perform a remote API call as a backup?
-                    name_short = "Unknown".to_string();
-                    name_long = "Unknown".to_string();
-                    info!("vendor lookup of mac_address({}) failed", &mac_address);
-                }
-
-            }
-            // Look up vendor_id, creating if necessary.
-            let vendor_id = self.get_vendor_id(name_short.clone(), name_long.clone());
             info!("detected new mac_address({}) with vendor({}) [{}]", &mac_address, &name_long, &name_short);
-
-            trace!("INSERT INTO mac (address, is_self, vendor_id) VALUES('{}', {}, {});", &mac_address, is_self, vendor_id);
+            trace!("INSERT INTO mac (address, is_self, vendor_id) VALUES('{}', {}, {});", &mac_address, is_self, netgrasp_event.vendor_id);
             let mut statement = self.sql.prepare("INSERT INTO mac (address, is_self, vendor_id) VALUES(?, ?, ?)").unwrap();
             let bound_mac_address: &str = &mac_address;
             statement.bind(1, bound_mac_address).unwrap();
             statement.bind(2, is_self).unwrap();
-            statement.bind(3, vendor_id).unwrap();
+            statement.bind(3, netgrasp_event.vendor_id).unwrap();
             statement.next().unwrap();
             // Recursively determine the mac_id of the mac address we just added.
-            let mac_id = self.get_mac_id(mac_address, is_self);
-            self.log_event(EVENT_MAC_SEEN_FIRST, mac_id, 0, 0);
-            self.log_event(EVENT_MAC_SEEN, mac_id, 0, 0);
-            mac_id
+            netgrasp_event = self.load_mac_id(netgrasp_event, mac_address, is_self);
+            self.log_event(&netgrasp_event, EVENT_MAC_SEEN_FIRST);
+            netgrasp_event
         }
     }
 
     // Retreives ip_id of ip address, adding if not already seen.
-    pub fn get_ip_id(&self, ip_address: String, mac_id: i64) -> i64 {
+    pub fn load_ip_id(&self, mut netgrasp_event: NetgraspEvent, ip_address: String) -> NetgraspEvent {
         debug_assert!(ip_address != "0.0.0.0");
 
         let mut cursor;
         // If the IP address doesn't have an associated mac_id, see if we can query it from our database.
-        if mac_id == 0 {
+        if netgrasp_event.mac_id == 0 {
             // @TODO: if ip.address == ip.host_name, perhaps perform another reverse IP lookup.
             // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
             // simply respect the DNS ttl?
@@ -356,76 +365,71 @@ impl NetgraspDb {
         }
         // While this IP address does have an associated mac_id, it may not yet be in our database (mac_id = 0).
         else {
-            trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}' AND (mac_id = {} OR mac_id = 0);", &ip_address, mac_id);
+            trace!("SELECT ip_id, mac_id FROM ip WHERE address = '{}' AND (mac_id = {} OR mac_id = 0);", &ip_address, netgrasp_event.mac_id);
             cursor = self.sql
                 .prepare("SELECT ip_id, mac_id FROM ip WHERE address = ? AND (mac_id = ? OR mac_id = 0)")
                 .unwrap()
                 .cursor();
             let bound_ip_address = &ip_address;
-            cursor.bind(&[Value::String(bound_ip_address.to_string()), Value::Integer(mac_id)]).unwrap();
+            cursor.bind(&[Value::String(bound_ip_address.to_string()), Value::Integer(netgrasp_event.mac_id)]).unwrap();
         }
 
         // We have seen this IP before, return the ip_id.
         if let Some(row) = cursor.next().unwrap() {
             // While we've seen the IP before, we may not have seen the associated MAC address.
-            if mac_id != 0 {
+            if netgrasp_event.mac_id != 0 {
                 let existing_mac_id = row[1].as_integer().unwrap();
                 // We're seeing the MAC associated with this IP for the first time, update it.
                 if existing_mac_id == 0 {
-                    info!("UPDATE ip SET mac_id = {} WHERE address = '{}';", mac_id, &ip_address);
+                    info!("UPDATE ip SET mac_id = {} WHERE address = '{}';", netgrasp_event.mac_id, &ip_address);
                     let mut cursor = self.sql
                         .prepare("UPDATE ip SET mac_id = ? WHERE address = ?")
                         .unwrap()
                         .cursor();
                     let bound_ip_address = &ip_address;
                     cursor.bind(&[
-                        Value::Integer(mac_id),
+                        Value::Integer(netgrasp_event.mac_id),
                         Value::String(bound_ip_address.to_string())
                     ]).unwrap();
                     cursor.next().unwrap();
                 }
             }
             // Return the ip_id.
-            let ip_id = row[0].as_integer().unwrap();
-            if mac_id == 0 {
-                self.log_event(EVENT_IP_REQUEST, mac_id, ip_id, 0);
+            netgrasp_event.ip_id = row[0].as_integer().unwrap();
+            if netgrasp_event.mac_id == 0 {
+                self.log_event(&netgrasp_event, EVENT_IP_REQUEST);
             }
             else {
-                self.log_event(EVENT_IP_SEEN, mac_id, ip_id, 0);
-                self.log_event(EVENT_IP_SEEN_FIRST, mac_id, ip_id, 0);
+                self.log_event(&netgrasp_event, EVENT_IP_SEEN);
             }
-            ip_id
         }
         // We're seeing this IP for the first time, add it to the database.
         else {
             let ip: std::net::IpAddr = ip_address.parse().unwrap();
             let host_name = lookup_addr(&ip).unwrap();
-            info!("detected new hostname({}) with (ip address, mac_id) pair: ({}, {})", &host_name, &ip_address, mac_id);
+            info!("detected new hostname({}) with (ip address, mac_id) pair: ({}, {})", &host_name, &ip_address, netgrasp_event.mac_id);
 
-            trace!("INSERT INTO ip (address, mac_id, host_name) VALUES('{}', {}, '{}');", &ip_address, mac_id, &host_name);
+            trace!("INSERT INTO ip (address, mac_id, host_name) VALUES('{}', {}, '{}');", &ip_address, netgrasp_event.mac_id, &host_name);
             let mut statement = self.sql.prepare("INSERT INTO ip (address, mac_id, host_name) VALUES(?, ?, ?)").unwrap();
             let bound_ip_address: &str = &ip_address;
             statement.bind(1, bound_ip_address).unwrap();
-            statement.bind(2, mac_id).unwrap();
+            statement.bind(2, netgrasp_event.mac_id).unwrap();
             let bound_host_name: &str = &host_name;
             statement.bind(3, bound_host_name).unwrap();
             statement.next().unwrap();
             // @TODO: trigger new_ip event.
             // Recursively determine the ip_id of the IP address we just added.
-            let ip_id = self.get_ip_id(ip_address, mac_id);
-            if mac_id == 0 {
-                self.log_event(EVENT_IP_REQUEST_FIRST, mac_id, ip_id, 0);
-                self.log_event(EVENT_IP_REQUEST, mac_id, ip_id, 0);
+            netgrasp_event = self.load_ip_id(netgrasp_event, ip_address);
+            if netgrasp_event.mac_id == 0 {
+                self.log_event(&netgrasp_event, EVENT_IP_REQUEST_FIRST);
             }
             else {
-                self.log_event(EVENT_IP_SEEN_FIRST, mac_id, ip_id, 0);
-                self.log_event(EVENT_IP_SEEN, mac_id, ip_id, 0);
+                self.log_event(&netgrasp_event, EVENT_IP_SEEN_FIRST);
             }
-            ip_id
         }
+        netgrasp_event
     }
 }
-
 
 // Python Netgrasp DB Schema:
 //
