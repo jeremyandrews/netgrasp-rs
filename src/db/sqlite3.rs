@@ -440,6 +440,10 @@ impl NetgraspDb {
             cursor.bind(&[Value::String(bound_ip_address.to_string()), Value::Integer(netgrasp_event.mac_id)]).unwrap();
         }
 
+        // @TODO: Update if host_name changes. Perform fewer lookups, instead use value from table most of the time.
+        let ip: std::net::IpAddr = ip_address.parse().unwrap();
+        netgrasp_event.host_name = lookup_addr(&ip).unwrap();
+
         // We have seen this IP before, return the ip_id.
         if let Some(row) = cursor.next().unwrap() {
             // While we've seen the IP before, we may not have seen the associated MAC address.
@@ -474,8 +478,6 @@ impl NetgraspDb {
         }
         // We're seeing this IP for the first time, add it to the database.
         else {
-            let ip: std::net::IpAddr = ip_address.parse().unwrap();
-            netgrasp_event.host_name = lookup_addr(&ip).unwrap();
             info!("detected new hostname({}) with (ip address, mac_id) pair: ({}, {})", &netgrasp_event.host_name, &ip_address, netgrasp_event.mac_id);
 
             trace!("INSERT INTO ip (address, mac_id, host_name, created, updated) VALUES('{}', {}, '{}', {}, {});",
@@ -501,69 +503,3 @@ impl NetgraspDb {
         netgrasp_event
     }
 }
-
-// Python Netgrasp DB Schema:
-//
-//
-// CREATE TABLE IF NOT EXISTS device(
-//   did INTEGER PRIMARY KEY,
-//   mid INTEGER,
-//   iid INTEGER,
-//   hid INTEGER,
-//   vid INTEGER,
-//   created TIMESTAMP,
-//   updated TIMESTAMP
-// )
-// CREATE UNIQUE INDEX IF NOT EXISTS idxdevice_mid_iid ON device (mid, iid)
-// CREATE INDEX IF NOT EXISTS idxdevice_hid_mid_did ON device (hid, mid, did)
-// CREATE INDEX IF NOT EXISTS idxdevice_vid ON device (vid)
-// CREATE INDEX IF NOT EXISTS idxdevice_updated ON device (updated)
-//
-// CREATE TABLE IF NOT EXISTS activity(
-//   aid INTEGER PRIMARY KEY,
-//   did INTEGER,
-//   iid INTEGER,
-//   interface TEXT,
-//   network TEXT,
-//   created TIMESTAMP,
-//   updated TIMESTAMP,
-//   counter INTEGER,
-//   active INTEGER
-// )
-// CREATE INDEX IF NOT EXISTS idxactivity_active_did ON activity (active, did)
-// CREATE INDEX IF NOT EXISTS idxactivity_did_iid ON activity (did, iid)
-// CREATE INDEX IF NOT EXISTS idxactivity_did_active_counter ON activity (did, active, counter)
-// CREATE INDEX IF NOT EXISTS idxactivity_active_updated ON activity (active, updated)
-//
-// CREATE TABLE IF NOT EXISTS request(
-//   rid INTEGER PRIMARY KEY,
-//   did INTEGER,
-//   ip TEXT,
-//   interface TEXT,
-//   network TEXT,
-//   created TIMESTAMP,
-//   updated TIMESTAMP,
-//   counter INTEGER,
-//   active INTEGER
-// )
-// CREATE INDEX IF NOT EXISTS idxrequest_active_updated ON request (active, updated)
-// CREATE INDEX IF NOT EXISTS idxrequest_updated ON request (updated)
-// CREATE INDEX IF NOT EXISTS idxrequest_active_ip ON request (active, ip)
-// CREATE INDEX IF NOT EXISTS idxrequest_did_created ON request (did, created)
-//
-// CREATE TABLE IF NOT EXISTS event(
-//   eid INTEGER PRIMARY KEY,
-//   mid INTEGER,
-//   iid INTEGER,
-//   did INTEGER,
-//   rid INTEGER,
-//   interface TEXT,
-//   network TEXT,
-//   timestamp TIMESTAMP,
-//   processed INTEGER,
-//   type VARCHAR
-// )
-// CREATE INDEX IF NOT EXISTS idxevent_type_timestamp_processed ON event (type, timestamp, processed)
-// CREATE INDEX IF NOT EXISTS idxevent_timestamp_processed ON event (timestamp, processed)
-// # PRAGMA index_list(event)
-// ANALYZE
