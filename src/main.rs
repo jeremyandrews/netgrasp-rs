@@ -16,9 +16,11 @@ mod db {
     pub mod sqlite3;
     pub mod oui;
 }
-
 mod net {
     pub mod arp;
+}
+mod utils {
+    pub mod time;
 }
 
 // List all interfaces.
