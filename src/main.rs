@@ -11,7 +11,6 @@ use std::thread;
 use std::sync::mpsc;
 use std::path::PathBuf;
 use std::fs;
-pub mod statics;
 mod db {
     pub mod sqlite3;
     pub mod oui;
@@ -20,8 +19,9 @@ mod net {
     pub mod arp;
 }
 mod utils {
-    pub mod time;
     pub mod format;
+    pub mod statics;
+    pub mod time;
 }
 
 // List all interfaces.
@@ -102,7 +102,7 @@ fn main() {
     let mut log_file;
     match matches.value_of("logfile") {
         None => {
-            let data_local_dir = statics::PROJECT_DIRS.data_local_dir();
+            let data_local_dir = utils::statics::PROJECT_DIRS.data_local_dir();
             log_file = PathBuf::new();
             log_file.push(data_local_dir);
             log_file.push("netgrasp.log");
@@ -124,7 +124,7 @@ fn main() {
     info!("Writing to log file: {}", log_file.display());
     debug!("Available interfaces: {:?}", interfaces);
 
-    let configuration_directory = statics::PROJECT_DIRS.config_dir();
+    let configuration_directory = utils::statics::PROJECT_DIRS.config_dir();
     debug!("Configuration path: {}", configuration_directory.display());
 
     // Force update of OUI database for MAC vendor lookups.
@@ -156,7 +156,7 @@ fn main() {
     let mut db_file;
     match matches.value_of("dbfile") {
         None => {
-            let data_local_dir = statics::PROJECT_DIRS.data_local_dir();
+            let data_local_dir = utils::statics::PROJECT_DIRS.data_local_dir();
             db_file = PathBuf::new();
             db_file.push(data_local_dir);
             db_file.push("netgrasp.db");

@@ -1,7 +1,7 @@
 use std::fs::File;
 use std::io::{BufWriter, Write};
 use std::path::PathBuf;
-use crate::statics;
+use crate::utils::statics;
 
 // Return path to local OUI database file.
 pub fn get_path() -> std::path::PathBuf {
