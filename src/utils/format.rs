@@ -1,18 +1,29 @@
 use crate::db::sqlite3::{NetgraspActiveDevice};
 
+// Display a list of all active devices
 pub fn display_active_devices(active_devices: Vec<NetgraspActiveDevice>) {
     println!("Active devices:");
+    // {:>##} gives the column a fixed width of ## characters, aligned right
     println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
     for device in active_devices.iter() {
-        let name: &str;
+        let name: String;
         if !device.host_name.is_empty() && device.host_name != device.ip_address {
-            name = &device.host_name;
+            name = device.host_name.to_string();
         }
         else {
-            name = &device.vendor_full_name;
+            name = device.vendor_full_name.to_string();
         }
-        println!("{:>34} {:>16} {:>22}", name, &device.ip_address, time_ago(device.recently_seen_last as u64));
+        println!("{:>34} {:>16} {:>22}", truncate_string(name, 33), truncate_string(device.ip_address.to_string(), 16), time_ago(device.recently_seen_last as u64));
     }
+}
+
+pub fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
+    if string_to_truncate.len() as u64 > max_length {
+        let truncated_length = max_length - 3;
+        string_to_truncate.truncate(truncated_length as usize);
+        string_to_truncate = string_to_truncate + "...";
+    }
+    string_to_truncate
 }
 
 pub fn time_ago(timestamp: u64)-> String {
