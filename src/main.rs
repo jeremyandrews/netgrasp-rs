@@ -21,6 +21,7 @@ mod net {
 }
 mod utils {
     pub mod time;
+    pub mod format;
 }
 
 // List all interfaces.
@@ -173,5 +174,8 @@ fn main() {
     loop {
         let received = arp_rx.recv().unwrap();
         netgrasp_db.log_arp_packet(received);
+        // proof of concept: display current list of known active devices.
+        let active_devices = netgrasp_db.get_active_devices();
+        utils::format::display_active_devices(active_devices);
     }
 }
