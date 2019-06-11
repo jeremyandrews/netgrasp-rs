@@ -2,19 +2,19 @@
 
 A passive network observation tool.
 
-Rewriting Netgrasp in Rust.
+Oxidizing Netgrasp.
 <https://github.com/jeremyandrews/netgrasp>
 
 ## Details
 
-* Leverages [smoltcp](https://lib.rs/crates/smoltcp) to monitor a network interface for ARP packets.
 * Leverages [clap](https://lib.rs/crates/clap) to provide command line argument parsing.
-* Leverages [simplelog](https://lib.rs/crates/simplelog) to provide logging to stdout and files.
-* Leverages [get_if_addrs](https://lib.rs/crates/get_if_addrs) to validate network interfaces.
-* Leverages [sqlite](https://crates.io/crates/sqlite) to integrate with Sqlite3.
 * Leverages [dns-lookup](https://crates.io/crates/dns-lookup/) to perform reverse DNS lookups.
+* Leverages [get_if_addrs](https://lib.rs/crates/get_if_addrs) to validate network interfaces.
 * Leverages [oui](https://crates.io/crates/oui) to perform vendor lookups of MAC addresses.
 * Leverages [reqwest](https://crates.io/crates/reqwest) to automatically download Wireshark OUI database.
+* Leverages [simplelog](https://lib.rs/crates/simplelog) to provide logging to stdout and files.
+* Leverages [smoltcp](https://lib.rs/crates/smoltcp) to monitor a network interface for ARP packets.
+* Leverages [sqlite](https://crates.io/crates/sqlite) to integrate with Sqlite3.
 
 ## TODO
 
@@ -25,7 +25,7 @@ Rewriting Netgrasp in Rust.
     * use TOML like rust (<https://crates.io/crates/toml)>
 1. Daemonize (<https://github.com/knsd/daemonize)>
     * drop permissions where unnecessary
-1. Log/process events
+1. Process events
 1. Notifications (email, other?)
     * to review (<https://crates.io/crates/mailstrom>)
     * to review (<https://crates.io/crates/lettre_email>)
