@@ -2,7 +2,7 @@ use crate::db::sqlite3::{NetgraspActiveDevice};
 
 pub fn display_active_devices(active_devices: Vec<NetgraspActiveDevice>) {
     println!("Active devices:");
-    println!("{:>16} {:>34} {:>22}", "IP", "Name", "Last Seen");
+    println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
     for device in active_devices.iter() {
         let name: &str;
         if !device.host_name.is_empty() && device.host_name != device.ip_address {
@@ -11,7 +11,7 @@ pub fn display_active_devices(active_devices: Vec<NetgraspActiveDevice>) {
         else {
             name = &device.vendor_full_name;
         }
-        println!("{:>16} {:>34} {:>22}", &device.ip_address, name, time_ago(device.recently_seen_last as u64));
+        println!("{:>34} {:>16} {:>22}", name, &device.ip_address, time_ago(device.recently_seen_last as u64));
     }
 }
 
