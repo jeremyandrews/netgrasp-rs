@@ -4,6 +4,9 @@ extern crate log;
 #[macro_use]
 extern crate lazy_static;
 
+#[macro_use]
+extern crate diesel;
+
 use clap::{Arg, App};
 use simplelog::*;
 use std::fs::File;
@@ -12,6 +15,8 @@ use std::sync::mpsc;
 use std::path::PathBuf;
 use std::fs;
 mod db {
+    pub mod schema;
+    pub mod models;
     pub mod sqlite3;
     pub mod oui;
 }
@@ -22,6 +27,9 @@ mod utils {
     pub mod format;
     pub mod statics;
     pub mod time;
+}
+mod notifications {
+    pub mod templates;
 }
 
 // List all interfaces.
@@ -169,7 +177,7 @@ fn main() {
     let path_to_db: &str = db_file.to_str().unwrap();
     let netgrasp_db = db::sqlite3::NetgraspDb::new(path_to_db.to_string(), path_to_oui_db.to_string());
     info!("Using SQLite3 database file: {}", path_to_db);
-    netgrasp_db.create_database();
+    netgrasp_db.migrate();
 
     loop {
         let received = arp_rx.recv().unwrap();
