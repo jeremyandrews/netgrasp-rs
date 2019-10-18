@@ -28,6 +28,7 @@ pub fn truncate_string(mut string_to_truncate: String, max_length: u64) -> Strin
 
 pub fn time_ago(timestamp: u64)-> String {
     let seconds = crate::utils::time::elapsed(timestamp);
+
     // Activity in the past 10 seconds is shown as "just now"
     if seconds < 10 {
         return "just now".to_string()

@@ -6,9 +6,9 @@ use dns_lookup::{lookup_addr};
 use eui48::MacAddress;
 use oui::OuiDatabase;
 use crate::db::models::*;
-use crate::utils::time;
-use rqpush::Notification;
+use crate::utils::{time, format};
 use crate::notifications::templates;
+use rqpush::Notification;
 use smoltcp::wire::ArpOperation;
 
 pub struct NetgraspDb {
@@ -21,8 +21,12 @@ pub struct NetgraspEvent {
     timestamp: i32,
     interface: String,
     mac_id: i32,
+    mac_address: String,
+    is_self: bool,
     ip_id: i32,
+    ip_address: String,
     host_name: String,
+    custom_name: String,
     vendor_id: i32,
     vendor_name: String,
     vendor_full_name: String,
@@ -59,8 +63,12 @@ impl NetgraspEvent {
             timestamp: time::timestamp_now() as i32,
             interface: interface,
             mac_id: 0,
+            mac_address: "".to_string(),
+            is_self: false,
             ip_id: 0,
+            ip_address: "".to_string(),
             host_name: "".to_string(),
+            custom_name: "".to_string(),
             vendor_id: 0,
             vendor_name: "".to_string(),
             vendor_full_name: "".to_string(),
@@ -219,20 +227,6 @@ impl NetgraspDb {
             .expect("Error logging event");
     }
 
-    pub fn send_notification(&self, event: &str, device: &str, detail: &str) {
-        let mut notification = Notification::init("Netgrasp", "[netgrasp] {{event}}: {{device}}", "A device returned to your network");
-        notification.add_value("event".to_string(), event.to_string());
-        notification.add_value("device".to_string(), device.to_string());
-        notification.add_value("ip".to_string(), device.to_string());
-        notification.add_value("name".to_string(), device.to_string());
-        notification.add_value("detail".to_string(), detail.to_string());
-        notification.set_short_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
-        notification.set_short_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
-        notification.set_long_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
-        notification.set_long_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
-        notification.send("http://localhost:8000", 50, 0, None);
-    }
-
     fn load_vendor_id(&self, mut netgrasp_event: NetgraspEvent) -> NetgraspEvent {
         use crate::db::schema::vendor;
 
@@ -248,6 +242,7 @@ impl NetgraspDb {
             // Return the vendor_id.
             netgrasp_event.vendor_id = results[0].vendor_id;
             self.log_event(&netgrasp_event, EVENT_VENDOR_SEEN);
+            self.send_notification(&netgrasp_event, "Vendor seen", &netgrasp_event.vendor_full_name, "A vendor has been seen on your network", 8);
             netgrasp_event
         }
         // If this mac address doesn't exist, add it.
@@ -270,6 +265,7 @@ impl NetgraspDb {
             // @TODO: can we get that from our earlier insert?
             netgrasp_event = self.load_vendor_id(netgrasp_event);
             self.log_event(&netgrasp_event, EVENT_VENDOR_SEEN_FIRST);
+            self.send_notification(&netgrasp_event, "New vendor seen", &netgrasp_event.vendor_full_name, "A new vendor has been seen on your network", 100);
             netgrasp_event
         }
     }
@@ -314,7 +310,10 @@ impl NetgraspDb {
             let existing_is_self = results[0].is_self;
             debug_assert!(existing_is_self == is_self);
             netgrasp_event.mac_id = results[0].mac_id;
+            netgrasp_event.mac_address = mac_address.clone();
+            netgrasp_event.is_self = is_self != 0;
             self.log_event(&netgrasp_event, EVENT_MAC_SEEN);
+            self.send_notification(&netgrasp_event, "MAC seen", &mac_address, "A MAC address has been seen on your network", 3);
             netgrasp_event
         }
         // If this mac address doesn't exist, add it.
@@ -336,8 +335,9 @@ impl NetgraspDb {
                 .expect("Error adding mac");
 
             // Recursively determine the mac_id of the mac address we just added.
-            netgrasp_event = self.load_mac_id(netgrasp_event, mac_address, is_self);
+            netgrasp_event = self.load_mac_id(netgrasp_event, mac_address.clone(), is_self);
             self.log_event(&netgrasp_event, EVENT_MAC_SEEN_FIRST);
+            self.send_notification(&netgrasp_event, "New MAC seen", &mac_address, "A new MAC address has been seen on your network", 120);
             netgrasp_event
         }
     }
@@ -348,6 +348,8 @@ impl NetgraspDb {
         use crate::db::schema::ip::dsl::*;
 
         debug_assert!(ip_address != "0.0.0.0");
+
+        netgrasp_event.ip_address = ip_address.clone();
 
         let results;
         // If the IP address doesn't have an associated mac_id, see if we can query it from our database.
@@ -391,16 +393,18 @@ impl NetgraspDb {
                         .execute(&self.sql);
 
                     self.log_event(&netgrasp_event, EVENT_IP_SEEN_FIRST);
+                    self.send_notification(&netgrasp_event, "New IP seen", &ip_address, "A new IP address has been seen on your network", 120);
                 }
             }
             // Return the ip_id.
             netgrasp_event.ip_id = results[0].ip_id;
             if netgrasp_event.mac_id == 0 {
                 self.log_event(&netgrasp_event, EVENT_IP_REQUEST);
+                self.send_notification(&netgrasp_event, "IP requested", &ip_address, "A mac for an IP address has been requested on your network", 5);
             }
             else {
                 self.log_event(&netgrasp_event, EVENT_IP_SEEN);
-                self.send_notification("new IP seen", &ip_address, "A new IP has been seen on your network");
+                self.send_notification(&netgrasp_event, "IP seen", &ip_address, "An IP has been seen on your network", 5);
             }
         }
         // We're seeing this IP for the first time, add it to the database.
@@ -424,14 +428,128 @@ impl NetgraspDb {
                 .expect("Error adding ip");
 
             // Recursively determine the ip_id of the IP address we just added.
-            netgrasp_event = self.load_ip_id(netgrasp_event, ip_address);
+            netgrasp_event = self.load_ip_id(netgrasp_event, ip_address.clone());
             if netgrasp_event.mac_id == 0 {
                 self.log_event(&netgrasp_event, EVENT_IP_REQUEST_FIRST);
+                self.send_notification(&netgrasp_event, "new IP requested", &ip_address, "A mac for a new IP address has been requested on your network", 5);
             }
             else {
                 self.log_event(&netgrasp_event, EVENT_IP_SEEN_FIRST);
+                self.send_notification(&netgrasp_event, "new IP seen", &ip_address, "A new IP address has been seen on your network", 120);
             }
         }
         netgrasp_event
+    }
+
+    fn get_name(&self, netgrasp_event: &NetgraspEvent) -> String {
+        //if netgrasp_event.custom_name != "" {
+        //    netgrasp_event.custom_name.clone()
+        //}
+        if netgrasp_event.host_name != "" {
+            return netgrasp_event.host_name.clone();
+        }
+        else if netgrasp_event.vendor_full_name != "" {
+            return netgrasp_event.vendor_full_name.clone();
+        }
+        "".to_string()
+    }
+
+    pub fn send_notification(&self, netgrasp_event: &NetgraspEvent, event: &str, device: &str, detail: &str, priority: u8) {
+        use crate::db::schema::arp::dsl::*;
+        use std::convert::TryInto;
+
+        // @TODO: Expose this to configuration:
+        if priority >= 50 {
+            // Determine how many times the IP was seen recently.
+            let recently_seen_count = diesel::dsl::sql::<diesel::sql_types::BigInt>("COUNT(src_ip)");
+            let recently_seen_query = arp
+                .select(recently_seen_count)
+                .filter(src_ip.eq(&netgrasp_event.ip_address))
+                // @TODO: recently
+                .load(&self.sql);
+            let recently_seen: i64 = match recently_seen_query {
+                Ok(r) => *r.first().unwrap(),
+                Err(_) => 0,
+            };
+            let recently_seen_string: String;
+            if recently_seen == 1 {
+                recently_seen_string = "1 time".to_string();
+            }
+            else if recently_seen == 0 {
+                recently_seen_string = "never".to_string();
+            }
+            else {
+                recently_seen_string = format!("{} times", recently_seen);
+            }
+
+            // Determine the last time the IP was seen recently.
+            let previously_seen_query = arp
+                .select(updated)
+                .filter(src_ip.eq(&netgrasp_event.ip_address))
+                .order(updated.desc())
+                .limit(2)
+                .load(&self.sql);
+            // convert i32 timestamp from SQLite into u64 for helpers
+            let previously_seen_string: String = match previously_seen_query {
+                Ok(l) => {
+                    let timestamp_string: String = match l.last() {
+                        Some(t) => {
+                            let g: i32 = *t;
+                            let timestamp: u64 = g.try_into().expect("failed to convert i32 to u64");
+                            format!("{} ago", format::time_ago(timestamp))
+                        },
+                        None => "never".to_string(),
+                    };
+                    timestamp_string
+                },
+                Err(_) => "never".to_string(),
+            };
+
+            // Determine the first time the IP was seen.
+            let min_updated = diesel::dsl::sql::<diesel::sql_types::Integer>("MIN(updated)");
+            let first_seen_query = arp
+                .select(min_updated)
+                .filter(src_ip.eq(&netgrasp_event.ip_address))
+                .load(&self.sql);
+            // convert i32 timestamp from SQLite into u64 for helpers
+            let first_seen: u64 = match first_seen_query {
+                Ok(l) => {
+                    let timestamp: i32 = *l.first().unwrap();
+                    timestamp.try_into().expect("failed to convert i32 to u64")
+                }
+                Err(_) => time::timestamp_now(),
+            };
+
+            let mut notification = Notification::init("Netgrasp", "", detail);
+            notification.add_value("event".to_string(), event.to_string());
+            notification.add_value("device".to_string(), device.to_string());
+            if netgrasp_event.ip_address != "" {
+                notification.add_value("ip".to_string(), netgrasp_event.ip_address.clone());
+            }
+            else {
+                notification.add_value("ip".to_string(), "(unknown)".to_string());
+            }
+            if netgrasp_event.mac_address != "" {
+                notification.add_value("mac".to_string(), netgrasp_event.mac_address.clone());
+            }
+            else {
+                notification.add_value("mac".to_string(), "unknown".to_string());
+            }
+            notification.add_value("name".to_string(), self.get_name(&netgrasp_event));
+            notification.add_value("host_name".to_string(), netgrasp_event.host_name.clone());
+            notification.add_value("vendor_name".to_string(), netgrasp_event.vendor_name.clone());
+            notification.add_value("vendor_full_name".to_string(), netgrasp_event.vendor_full_name.clone());
+            notification.add_value("detail".to_string(), detail.to_string());
+            notification.add_value("interface".to_string(), netgrasp_event.interface.clone());
+            notification.add_value("first_seen".to_string(), format::time_ago(first_seen));
+            notification.add_value("previously_seen".to_string(), previously_seen_string);
+            notification.add_value("recently_seen".to_string(), recently_seen_string);
+            notification.set_title_template(templates::NETGRASP_TITLE_TEMPLATE.to_string());
+            notification.set_short_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
+            notification.set_short_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
+            notification.set_long_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
+            notification.set_long_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
+            notification.send("http://localhost:8000", priority, 0, None);
+        }
     }
 }
