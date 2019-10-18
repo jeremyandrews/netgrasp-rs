@@ -2,7 +2,7 @@
 pub const NETGRASP_TITLE_TEMPLATE: &str = "[netgrasp] {{event}}: {{device}}";
 
 pub const NETGRASP_TEXT_TEMPLATE: &str = "{{notification}}:
- * {{name}} ({{vendor_full_name}})
+ * {{name}} {{wrapped_vendor}}
  * ip: {{ip}} [{{mac}}]
  * interface: {{interface}}
  * previously seen: {{previously_seen}}
@@ -20,7 +20,7 @@ pub const NETGRASP_HTML_TEMPLATE: &str = r#"
 <BODY>
   {{notification}}: 
   <UL>
-    <LI>{{name}} (<EM>{{vendor_full_name}}</EM>)</LI>
+    <LI>{{name}} <EM>{{wrapped_vendor}}</EM>
     <LI>ip: {{ip}} [{{mac}}]</LI>
     <LI>interface: {{interface}}</LI>
     <LI>previously seen: {{previously_seen}}</LI>

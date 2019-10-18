@@ -539,6 +539,17 @@ impl NetgraspDb {
             notification.add_value("host_name".to_string(), netgrasp_event.host_name.clone());
             notification.add_value("vendor_name".to_string(), netgrasp_event.vendor_name.clone());
             notification.add_value("vendor_full_name".to_string(), netgrasp_event.vendor_full_name.clone());
+            let wrapped_vendor: String;
+            if netgrasp_event.vendor_full_name == "" {
+                wrapped_vendor = "".to_string();
+            }
+            else if netgrasp_event.vendor_full_name == self.get_name(&netgrasp_event) {
+                wrapped_vendor = "".to_string();
+            }
+            else {
+                wrapped_vendor = format!("({})", netgrasp_event.vendor_full_name.clone());
+            }
+            notification.add_value("wrapped_vendor".to_string(), wrapped_vendor);
             notification.add_value("detail".to_string(), detail.to_string());
             notification.add_value("interface".to_string(), netgrasp_event.interface.clone());
             notification.add_value("first_seen".to_string(), format::time_ago(first_seen));
