@@ -540,7 +540,7 @@ impl NetgraspDb {
             notification.add_value("vendor_name".to_string(), netgrasp_event.vendor_name.clone());
             notification.add_value("vendor_full_name".to_string(), netgrasp_event.vendor_full_name.clone());
             let wrapped_vendor: String;
-            if netgrasp_event.vendor_full_name == "" {
+            if netgrasp_event.vendor_full_name == "Unknown" {
                 wrapped_vendor = "".to_string();
             }
             else if netgrasp_event.vendor_full_name == self.get_name(&netgrasp_event) {
