@@ -20,7 +20,7 @@ pub const NETGRASP_HTML_TEMPLATE: &str = r#"
 <BODY>
   {{notification}}: 
   <UL>
-    <LI>{{name}}</LI>
+    <LI>{{name}} (<EM>{{vendor}}</EM>)</LI>
     <LI>ip: {{ip}} [{{mac}}]</LI>
     <LI>interface: {{interface}}</LI>
     <LI>previously seen: {{previously_seen}}</LI>
