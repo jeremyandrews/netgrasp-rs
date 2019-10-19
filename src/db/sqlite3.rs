@@ -465,9 +465,9 @@ impl NetgraspDb {
 
         let now = time::timestamp_now();
         let last_active: i32 = (now - active_lifetime) as i32;
-        // 1) Set is_active to 0 where created > active_seconds ago
+        // 1) Set is_active to 0 where created < active_seconds ago
         diesel::update(arp)
-            .filter(created.ge(last_active))
+            .filter(created.le(last_active))
             .set((is_active.eq(0), updated.eq(now as i32)))
             .execute(&self.sql);
 
