@@ -179,11 +179,20 @@ fn main() {
     info!("Using SQLite3 database file: {}", path_to_db);
     netgrasp_db.migrate();
 
+    let mut last_processed_inactive_ips: u64 = 0;
+    let ips_active_for: u64 = 60 * 60 * 3;
     loop {
         let received = arp_rx.recv().unwrap();
         netgrasp_db.log_arp_packet(received);
+
         // proof of concept: display current list of known active devices.
         let active_devices = netgrasp_db.get_active_devices();
         utils::format::display_active_devices(active_devices);
+
+        let now = utils::time::timestamp_now();
+        if now - 60 > last_processed_inactive_ips {
+            last_processed_inactive_ips = now;
+            netgrasp_db.process_inactive_ips(ips_active_for);
+        }
     }
 }

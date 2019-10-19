@@ -16,13 +16,13 @@ pub struct NetgraspDb {
     oui: OuiDatabase,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Queryable)]
 pub struct NetgraspEvent {
     timestamp: i32,
     interface: String,
     mac_id: i32,
     mac_address: String,
-    is_self: bool,
+    is_self: i32,
     ip_id: i32,
     ip_address: String,
     host_name: String,
@@ -54,6 +54,7 @@ const EVENT_IP_SEEN: &str = "ip seen";
 const EVENT_IP_SEEN_FIRST: &str = "ip first seen";
 const EVENT_VENDOR_SEEN: &str = "vendor seen";
 const EVENT_VENDOR_SEEN_FIRST: &str = "vendor first seen";
+const EVENT_IP_INACTIVE: &str = "ip inactive";
 // EVENT_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE_RECENTLY, 
 // EVENT_STALE, EVENT_REQUEST_STALE, EVENT_CHANGED_IP, EVENT_DUPLICATE_IP, EVENT_DUPLICATE_MAC, EVENT_SCAN, EVENT_IP_NOT_ON_NETWORK, EVENT_SRC_MAC_BROADCAST, EVENT_REQUESTED_SELF = ALERT_TYPES
 
@@ -64,7 +65,7 @@ impl NetgraspEvent {
             interface: interface,
             mac_id: 0,
             mac_address: "".to_string(),
-            is_self: false,
+            is_self: 0,
             ip_id: 0,
             ip_address: "".to_string(),
             host_name: "".to_string(),
@@ -99,6 +100,7 @@ impl NetgraspDb {
         let active_devices: Vec<(NetgraspActiveDevice)> = arp
             .select((interface, src_ip, src_mac, host_name, vendor_name, vendor_full_name, &count_src_ip, min_updated, &max_updated))
             .filter(src_ip.ne("0.0.0.0"))
+            .filter(is_active.eq(1))
             .group_by(src_ip)
             .order((max_updated.clone().desc(), count_src_ip.clone().desc()))
             .load(&self.sql)
@@ -183,6 +185,7 @@ impl NetgraspDb {
         let new_arp = NewArp {
             src_mac_id: netgrasp_event_src.mac_id,
             src_ip_id: netgrasp_event_src.ip_id,
+            src_vendor_id: netgrasp_event_src.vendor_id,
             tgt_ip_id: netgrasp_event_tgt.ip_id,
             interface: arp_packet.interface,
             host_name: netgrasp_event_src.host_name,
@@ -194,6 +197,9 @@ impl NetgraspDb {
             tgt_mac: arp_packet.tgt_mac.to_string(),
             tgt_ip: arp_packet.tgt_ip.to_string(),
             operation: operation,
+            is_self: netgrasp_event_src.is_self,
+            is_active: 1,
+            processed: 0,
             matched: 0,
             created: netgrasp_event_src.timestamp,
             updated: netgrasp_event_src.timestamp
@@ -311,7 +317,7 @@ impl NetgraspDb {
             debug_assert!(existing_is_self == is_self);
             netgrasp_event.mac_id = results[0].mac_id;
             netgrasp_event.mac_address = mac_address.clone();
-            netgrasp_event.is_self = is_self != 0;
+            netgrasp_event.is_self = is_self;
             self.log_event(&netgrasp_event, EVENT_MAC_SEEN);
             self.send_notification(&netgrasp_event, "MAC seen", &mac_address, "A MAC address has been seen on your network", 3);
             netgrasp_event
@@ -452,6 +458,41 @@ impl NetgraspDb {
             return netgrasp_event.vendor_full_name.clone();
         }
         "".to_string()
+    }
+
+    pub fn process_inactive_ips(&self, active_lifetime: u64) {
+        use crate::db::schema::arp::dsl::*;
+
+        let now = time::timestamp_now();
+        let last_active: i32 = (now - active_lifetime) as i32;
+        // 1) Set is_active to 0 where created > active_seconds ago
+        diesel::update(arp)
+            .filter(created.ge(last_active))
+            .set((is_active.eq(0), updated.eq(now as i32)))
+            .execute(&self.sql);
+
+        // 2) Search for is_active = 0, processed = 0
+        //     - send notifications for these devices: they've gone inactive
+        //let max_updated = diesel::dsl::sql::<diesel::sql_types::Integer>("MAX(updated)");
+        let inactive_ips: Vec<(NetgraspEvent)> = arp
+            .select((updated, interface, src_mac_id, src_mac, is_self, src_ip_id, src_ip, host_name, custom_name, src_vendor_id, vendor_name, vendor_full_name))
+            .filter(processed.eq(0))
+            .filter(is_active.eq(0))
+            .filter(updated.gt(last_active))
+            .load(&self.sql)
+            .expect("Error loading netgrasp event");
+        
+        for inactive_ip in inactive_ips {
+            self.log_event(&inactive_ip, EVENT_IP_INACTIVE);
+            self.send_notification(&inactive_ip, "IP inactive", &inactive_ip.ip_address, "An ip has gone inactive on your network", 100);
+        }
+
+        // 3) Set processed = 1 for all is_active = 0 AND processed = 0
+        diesel::update(arp)
+            .filter(processed.eq(0))
+            .filter(is_active.eq(0))
+            .set((processed.eq(1), updated.eq(now as i32)))
+            .execute(&self.sql);
     }
 
     pub fn send_notification(&self, netgrasp_event: &NetgraspEvent, event: &str, device: &str, detail: &str, priority: u8) {

@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS arp (
 	arp_id INTEGER NOT NULL PRIMARY KEY,
 	src_mac_id INTEGER NOT NULL,
 	src_ip_id INTEGER NOT NULL,
+	src_vendor_id INTEGER NOT NULL,
 	tgt_ip_id INTEGER NOT NULL,
 	interface TEXT NOT NULL,
 	host_name TEXT NOT NULL,
@@ -13,6 +14,9 @@ CREATE TABLE IF NOT EXISTS arp (
 	tgt_mac TEXT NOT NULL,
 	tgt_ip TEXT NOT NULL,
 	operation INTEGER NOT NULL,
+    is_self INTEGER NOT NULL,
+	is_active INTEGER NOT NULL,
+	processed INTEGER NOT NULL,
 	matched INTEGER NOT NULL,
 	created INTEGER NOT NULL,
 	updated INTEGER NOT NULL
@@ -53,7 +57,7 @@ CREATE TABLE IF NOT EXISTS mac (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idxmac_address ON mac (address);
 
-CREATE TABLE IF NOT EXISTS vendor(
+CREATE TABLE IF NOT EXISTS vendor (
 	vendor_id INTEGER NOT NULL PRIMARY KEY,
 	name TEXT NOT NULL,
 	full_name TEXT NOT NULL,
