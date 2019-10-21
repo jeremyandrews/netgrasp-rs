@@ -177,10 +177,14 @@ fn main() {
     let path_to_db: &str = db_file.to_str().unwrap();
     let netgrasp_db = db::sqlite3::NetgraspDb::new(path_to_db.to_string(), path_to_oui_db.to_string());
     info!("Using SQLite3 database file: {}", path_to_db);
-    netgrasp_db.migrate();
+    let response = netgrasp_db.migrate();
+    match response {
+        Err(e) => eprintln!("database migration error: {}", e),
+        Ok(_) => (),
+    }
 
+    // Track the last time we processed inactive ips
     let mut last_processed_inactive_ips: u64 = 0;
-    let ips_active_for: u64 = 60 * 60 * 3;
     loop {
         let received = arp_rx.recv().unwrap();
         netgrasp_db.log_arp_packet(received);
@@ -192,7 +196,7 @@ fn main() {
         let now = utils::time::timestamp_now();
         if now - 60 > last_processed_inactive_ips {
             last_processed_inactive_ips = now;
-            netgrasp_db.process_inactive_ips(ips_active_for);
+            netgrasp_db.process_inactive_ips();
         }
     }
 }

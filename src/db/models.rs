@@ -93,7 +93,7 @@ pub struct NewIp {
     pub updated: i32,
 }
 
-#[derive(Queryable, Debug)]
+#[derive(Queryable, Default, Debug)]
 pub struct Vendor {
     pub vendor_id: i32,
     pub name: String,
