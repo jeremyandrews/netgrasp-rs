@@ -19,6 +19,7 @@ table! {
         is_active -> Integer,
         processed -> Integer,
         matched -> Integer,
+        event_type -> Text,
         created -> Integer,
         updated -> Integer,
     }

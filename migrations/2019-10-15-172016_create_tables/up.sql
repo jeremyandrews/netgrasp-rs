@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS arp (
 	is_active INTEGER NOT NULL,
 	processed INTEGER NOT NULL,
 	matched INTEGER NOT NULL,
+	event_type TEXT NOT NULL,
 	created INTEGER NOT NULL,
 	updated INTEGER NOT NULL
 );

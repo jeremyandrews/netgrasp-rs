@@ -21,6 +21,7 @@ pub struct Arp {
     pub is_active: i32,
     pub processed: i32,
     pub matched: i32,
+    pub event_type: i32,
     pub created: i32,
     pub updated: i32,
 }
@@ -46,6 +47,7 @@ pub struct NewArp {
     pub is_active: i32,
     pub processed: i32,
     pub matched: i32,
+    pub event_type: String,
     pub created: i32,
     pub updated: i32,
 }
