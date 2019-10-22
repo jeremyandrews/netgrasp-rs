@@ -22,7 +22,8 @@ pub struct Arp {
     pub is_active: i32,
     pub processed: i32,
     pub matched: i32,
-    pub event_type: i32,
+    pub event_type: String,
+    pub event_description: String,
     pub created: i32,
     pub updated: i32,
 }
@@ -49,6 +50,7 @@ pub struct NewArp {
     pub processed: i32,
     pub matched: i32,
     pub event_type: String,
+    pub event_description: String,
     pub created: i32,
     pub updated: i32,
 }
@@ -113,33 +115,3 @@ pub struct NewVendor {
     pub created: i32,
     pub updated: i32,
 }
-
-/*
-#[derive(Queryable, Debug)]
-pub struct Event {
-    pub event_id: i32,
-    pub mac_id: i32,
-    pub ip_id: i32,
-    pub vendor_id: i32,
-    pub interface: String,
-    pub network: String,
-    pub description: String,
-    pub processed: i32,
-    pub created: i32,
-    pub updated: i32,
-}
-
-#[derive(Insertable)]
-#[table_name = "event"]
-pub struct NewEvent {
-    pub mac_id: i32,
-    pub ip_id: i32,
-    pub vendor_id: i32,
-    pub interface: String,
-    pub network: String,
-    pub description: String,
-    pub processed: i32,
-    pub created: i32,
-    pub updated: i32,
-}
-*/

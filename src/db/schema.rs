@@ -20,6 +20,7 @@ table! {
         processed -> Integer,
         matched -> Integer,
         event_type -> Text,
+        event_description -> Text,
         created -> Integer,
         updated -> Integer,
     }
