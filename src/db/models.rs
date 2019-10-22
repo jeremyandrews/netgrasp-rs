@@ -1,4 +1,5 @@
-use super::schema::{arp, ip, mac, vendor, event};
+//use super::schema::{arp, ip, mac, vendor, event};
+use super::schema::{arp, ip, mac, vendor};
 
 #[derive(Queryable, Debug)]
 pub struct Arp {
@@ -113,6 +114,7 @@ pub struct NewVendor {
     pub updated: i32,
 }
 
+/*
 #[derive(Queryable, Debug)]
 pub struct Event {
     pub event_id: i32,
@@ -140,3 +142,4 @@ pub struct NewEvent {
     pub created: i32,
     pub updated: i32,
 }
+*/

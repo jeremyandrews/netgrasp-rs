@@ -24,6 +24,7 @@ CREATE TABLE IF NOT EXISTS arp (
 );
 CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation);
 
+/*
 CREATE TABLE IF NOT EXISTS event (
 	event_id INTEGER NOT NULL PRIMARY KEY,
 	mac_id INTEGER NOT NULL,
@@ -36,6 +37,7 @@ CREATE TABLE IF NOT EXISTS event (
 	created INTEGER NOT NULL,
 	updated INTEGER NOT NULL
 );
+*/
 
 CREATE TABLE IF NOT EXISTS ip (
 	ip_id INTEGER NOT NULL PRIMARY KEY,

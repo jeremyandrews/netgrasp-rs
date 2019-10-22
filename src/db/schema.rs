@@ -26,21 +26,6 @@ table! {
 }
 
 table! {
-    event (event_id) {
-        event_id -> Integer,
-        mac_id -> Integer,
-        ip_id -> Integer,
-        vendor_id -> Integer,
-        interface -> Text,
-        network -> Text,
-        description -> Text,
-        processed -> Integer,
-        created -> Integer,
-        updated -> Integer,
-    }
-}
-
-table! {
     ip (ip_id) {
         ip_id -> Integer,
         mac_id -> Integer,
@@ -75,7 +60,6 @@ table! {
 
 allow_tables_to_appear_in_same_query!(
     arp,
-    event,
     ip,
     mac,
     vendor,
