@@ -75,10 +75,10 @@ enum NetgraspEventType {
     //IpChanged,
     //IpDuplicate,
     //IpNotOnNetwork,
-    //DeviceFirstSeen,
-    //DeviceSeen,
-    //DeviceInactive,
-    //DeviceReturned,
+    DeviceFirstSeen,
+    DeviceSeen,
+    DeviceInactive,
+    DeviceReturned,
     //NetworkScan,
 }
 
@@ -99,13 +99,22 @@ fn netgrasp_event_type_name(netgrasp_event_type: NetgraspEventType) -> String {
         NetgraspEventType::IpInactive => "IP inactive".to_string(),
         NetgraspEventType::IpReturned => "IP returned".to_string(),
         //NetgraspEventType::IpChanged => "IP changed".to_string(),
-        //NetgraspEventType::IpDuplicate => "Duplicate IP".to_string(),
+        //NetgraspEventType::IpDuplicate => "duplicate IP".to_string(),
         //NetgraspEventType::IpNotOnNetwork => "IP not on network".to_string(),
-        //NetgraspEventType::DeviceFirstSeen => "Device first seen".to_string(),
-        //NetgraspEventType::DeviceSeen => "Device seen".to_string(),
-        //NetgraspEventType::DeviceInactive => "Device inactive".to_string(),
-        //NetgraspEventType::DeviceReturned => "Device returned".to_string(),
-        //NetgraspEventType::NetworkScan => "Network scan".to_string(),
+        NetgraspEventType::DeviceFirstSeen => "device first seen".to_string(),
+        NetgraspEventType::DeviceSeen => "device seen".to_string(),
+        NetgraspEventType::DeviceInactive => "device inactive".to_string(),
+        NetgraspEventType::DeviceReturned => "device returned".to_string(),
+        //NetgraspEventType::NetworkScan => "network scan".to_string(),
+    }
+}
+
+fn device_name(netgrasp_event: &NetgraspEvent) -> String {
+    if !netgrasp_event.host_name.is_empty() && netgrasp_event.host_name != netgrasp_event.ip_address {
+        netgrasp_event.host_name.clone()
+    }
+    else {
+        netgrasp_event.vendor_full_name.clone()
     }
 }
 
@@ -334,7 +343,7 @@ impl NetgraspDb {
                 netgrasp_event.vendor_id = v.vendor_id;
                 netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::VendorSeen);
                 self.log_event(&netgrasp_event);
-                self.send_notification(&netgrasp_event, "Vendor seen", &netgrasp_event.vendor_full_name, "A vendor has been seen on your network", 8);
+                self.send_notification(&netgrasp_event, &netgrasp_event.vendor_full_name, "A vendor has been seen on your network", 8);
                 netgrasp_event
             }
             // Otherwise this is the first time we've seen this vendor.
@@ -364,7 +373,7 @@ impl NetgraspDb {
                 netgrasp_event = self.load_vendor_id(netgrasp_event);
                 netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::VendorFirstSeen);
                 self.log_event(&netgrasp_event);
-                self.send_notification(&netgrasp_event, "New vendor seen", &netgrasp_event.vendor_full_name, "A new vendor has been seen on your network", 100);
+                self.send_notification(&netgrasp_event, &netgrasp_event.vendor_full_name, "A new vendor has been seen on your network", 100);
                 netgrasp_event
             }
         }
@@ -390,8 +399,8 @@ impl NetgraspDb {
             }
             None => {
                 // @TODO: Review these, perhaps perform a remote API call as a backup?
-                netgrasp_event.vendor_name = "Unknown".to_string();
-                netgrasp_event.vendor_full_name = "Unknown".to_string();
+                netgrasp_event.vendor_name = "unknown".to_string();
+                netgrasp_event.vendor_full_name = "unknown".to_string();
                 info!("vendor lookup of mac_address({}) failed", &mac_address);
             }
 
@@ -412,7 +421,7 @@ impl NetgraspDb {
                 netgrasp_event.is_self = is_self;
                 netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::MacSeen);
                 self.log_event(&netgrasp_event);
-                self.send_notification(&netgrasp_event, "MAC seen", &mac_address, "A MAC address has been seen on your network", 3);
+                self.send_notification(&netgrasp_event, &mac_address, "A MAC address has been seen on your network", 3);
                 netgrasp_event
             }
             // Otherwise this is the first time we've seen this vendor.
@@ -438,7 +447,7 @@ impl NetgraspDb {
                 netgrasp_event = self.load_mac_id(netgrasp_event, mac_address.clone(), is_self);
                 netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::MacFirstSeen);
                 self.log_event(&netgrasp_event);
-                self.send_notification(&netgrasp_event, "New MAC seen", &mac_address, "A new MAC address has been seen on your network", 120);
+                self.send_notification(&netgrasp_event, &mac_address, "A new MAC address has been seen on your network", 120);
                 netgrasp_event
             }
         }
@@ -511,7 +520,11 @@ impl NetgraspDb {
                             }
                         netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::IpFirstSeen);
                         self.log_event(&netgrasp_event);
-                        self.send_notification(&netgrasp_event, "New IP seen", &netgrasp_event.ip_address, "A new IP address has been seen on your network", 120);
+                        self.send_notification(&netgrasp_event, &netgrasp_event.ip_address, "A new IP address has been seen on your network", 120);
+                        // Devices are currently tied to IPs
+                        netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::DeviceFirstSeen);
+                        self.log_event(&netgrasp_event);
+                        self.send_notification(&netgrasp_event, &device_name(&netgrasp_event), "A new device has been seen on your network", 150);
                     }
                     else {
                         // Determine the last time the IP was seen recently.
@@ -530,7 +543,11 @@ impl NetgraspDb {
                         if previously_seen < inactive_before {
                             netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::IpReturned);
                             self.log_event(&netgrasp_event);
-                            self.send_notification(&netgrasp_event, "IP returned", &netgrasp_event.ip_address, "An IP address has returned to your network", 120);
+                            self.send_notification(&netgrasp_event, &netgrasp_event.ip_address, "An IP address has returned to your network", 120);
+                            // Devices are currently tied to IPs
+                            netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::DeviceReturned);
+                            self.log_event(&netgrasp_event);
+                            self.send_notification(&netgrasp_event, &device_name(&netgrasp_event), "A device has returned to your network", 150);
                         }
                     }
                 }
@@ -539,12 +556,15 @@ impl NetgraspDb {
                 if netgrasp_event.mac_id == 0 {
                     netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::IpRequest);
                     self.log_event(&netgrasp_event);
-                    self.send_notification(&netgrasp_event, "IP requested", &netgrasp_event.ip_address, "A mac for an IP address has been requested on your network", 5);
+                    self.send_notification(&netgrasp_event, &netgrasp_event.ip_address, "A mac for an IP address has been requested on your network", 5);
                 }
                 else {
                     netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::IpSeen);
                     self.log_event(&netgrasp_event);
-                    self.send_notification(&netgrasp_event, "IP seen", &netgrasp_event.ip_address, "An IP has been seen on your network", 5);
+                    self.send_notification(&netgrasp_event, &netgrasp_event.ip_address, "An IP has been seen on your network", 5);
+                    netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::DeviceSeen);
+                    self.log_event(&netgrasp_event);
+                    self.send_notification(&netgrasp_event, &device_name(&netgrasp_event), "A device has been seen on your network", 12);
                 }
             }
             // We're seeing this IP for the first time, add it to the database.
@@ -579,12 +599,16 @@ impl NetgraspDb {
                 if netgrasp_event.mac_id == 0 {
                     netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::IpFirstRequest);
                     self.log_event(&netgrasp_event);
-                    self.send_notification(&netgrasp_event, "new IP requested", &netgrasp_event.ip_address, "A mac for a new IP address has been requested on your network", 5);
+                    self.send_notification(&netgrasp_event, &netgrasp_event.ip_address, "A mac for a new IP address has been requested on your network", 5);
                 }
                 else {
                     netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::IpFirstSeen);
                     self.log_event(&netgrasp_event);
-                    self.send_notification(&netgrasp_event, "new IP seen", &netgrasp_event.ip_address, "A new IP address has been seen on your network 2", 120);
+                    self.send_notification(&netgrasp_event, &netgrasp_event.ip_address, "A new IP address has been seen on your network 2", 120);
+                    // Devices are currently tied to IPs
+                    netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::DeviceFirstSeen);
+                    self.log_event(&netgrasp_event);
+                    self.send_notification(&netgrasp_event, &device_name(&netgrasp_event), "A new device has been seen on your network", 150);
                 }
             }
         }
@@ -649,7 +673,10 @@ impl NetgraspDb {
                     let mut netgrasp_event: NetgraspEvent = i;
                     netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::IpInactive);
                     self.log_event(&netgrasp_event);
-                    self.send_notification(&netgrasp_event, "IP inactive", &netgrasp_event.ip_address, "An ip has gone inactive on your network", 100);
+                    self.send_notification(&netgrasp_event, &netgrasp_event.ip_address, "An ip has gone inactive on your network", 100);
+                    netgrasp_event.event_type = netgrasp_event_type_name(NetgraspEventType::DeviceInactive);
+                    self.log_event(&netgrasp_event);
+                    self.send_notification(&netgrasp_event, &device_name(&netgrasp_event), "A device has gone inactive on your network", 110);
                 }
                 Err(e) => {
                     info!("process_inactive_ips: failed to load inactive ip event details: {}", e);
@@ -669,7 +696,7 @@ impl NetgraspDb {
         }
     }
 
-    pub fn send_notification(&self, netgrasp_event: &NetgraspEvent, event: &str, device: &str, detail: &str, priority: u8) {
+    pub fn send_notification(&self, netgrasp_event: &NetgraspEvent, device: &str, detail: &str, priority: u8) {
         use crate::db::schema::arp::dsl::*;
         use std::convert::TryInto;
 
@@ -738,7 +765,7 @@ impl NetgraspDb {
             };
 
             let mut notification = Notification::init("Netgrasp", "", detail);
-            notification.add_value("event".to_string(), event.to_string());
+            notification.add_value("event".to_string(), netgrasp_event.event_type.to_string());
             notification.add_value("device".to_string(), device.to_string());
             if netgrasp_event.ip_address != "" {
                 notification.add_value("ip".to_string(), netgrasp_event.ip_address.clone());
@@ -757,7 +784,7 @@ impl NetgraspDb {
             notification.add_value("vendor_name".to_string(), netgrasp_event.vendor_name.clone());
             notification.add_value("vendor_full_name".to_string(), netgrasp_event.vendor_full_name.clone());
             let wrapped_vendor: String;
-            if netgrasp_event.vendor_full_name == "Unknown" {
+            if netgrasp_event.vendor_full_name == "unknown" {
                 wrapped_vendor = "".to_string();
             }
             else if netgrasp_event.vendor_full_name == self.get_name(&netgrasp_event) {
