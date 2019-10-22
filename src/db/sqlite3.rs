@@ -63,16 +63,23 @@ enum NetgraspEventType {
     VendorSeen,
     MacFirstSeen,
     MacSeen,
+    //MacDuplicate,
+    //MacBroadcast,
     IpFirstRequest,
     IpRequest,
+    //IpRequestSelf,
     IpFirstSeen,
     IpSeen,
     IpInactive,
     IpReturned,
+    //IpChanged,
+    //IpDuplicate,
+    //IpNotOnNetwork,
     //DeviceFirstSeen,
     //DeviceSeen,
     //DeviceInactive,
-    //DeviceReturned
+    //DeviceReturned,
+    //NetworkScan,
 }
 
 fn netgrasp_event_type_name(netgrasp_event_type: NetgraspEventType) -> String {
@@ -82,32 +89,25 @@ fn netgrasp_event_type_name(netgrasp_event_type: NetgraspEventType) -> String {
         NetgraspEventType::VendorSeen => "vendor seen".to_string(),
         NetgraspEventType::MacFirstSeen => "mac first seen".to_string(),
         NetgraspEventType::MacSeen => "mac seen".to_string(),
+        //NetgraspEventType::MacDuplicate => "Duplicate mac".to_string(),
+        //NetgraspEventType::MacBroadcast => "mac broadcast".to_string(),
         NetgraspEventType::IpFirstRequest => "IP first requested".to_string(),
         NetgraspEventType::IpRequest => "IP requested".to_string(),
+        //NetgraspEventType::IpRequestSelf => "IP requested self".to_string(),
         NetgraspEventType::IpFirstSeen => "IP first seen".to_string(),
         NetgraspEventType::IpSeen => "IP seen".to_string(),
         NetgraspEventType::IpInactive => "IP inactive".to_string(),
         NetgraspEventType::IpReturned => "IP returned".to_string(),
+        //NetgraspEventType::IpChanged => "IP changed".to_string(),
+        //NetgraspEventType::IpDuplicate => "Duplicate IP".to_string(),
+        //NetgraspEventType::IpNotOnNetwork => "IP not on network".to_string(),
         //NetgraspEventType::DeviceFirstSeen => "Device first seen".to_string(),
         //NetgraspEventType::DeviceSeen => "Device seen".to_string(),
         //NetgraspEventType::DeviceInactive => "Device inactive".to_string(),
         //NetgraspEventType::DeviceReturned => "Device returned".to_string(),
+        //NetgraspEventType::NetworkScan => "Network scan".to_string(),
     }
 }
-
-//const EVENT_MAC_SEEN: &str = "mac seen";
-//const EVENT_MAC_SEEN_FIRST: &str = "mac first seen";
-//const EVENT_IP_REQUEST_FIRST: &str = "ip first request";
-//const EVENT_IP_REQUEST_FIRST_RECENT: &str = "ip first recent request";
-//const EVENT_IP_REQUEST: &str = "ip request";
-//const EVENT_IP_SEEN: &str = "ip seen";
-//const EVENT_IP_SEEN_FIRST: &str = "ip first seen";
-//const EVENT_VENDOR_SEEN: &str = "vendor seen";
-//const EVENT_VENDOR_SEEN_FIRST: &str = "vendor first seen";
-//const EVENT_IP_INACTIVE: &str = "ip inactive";
-//const EVENT_IP_RETURNED: &str = "ip returned";
-// EVENT_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE_RECENTLY, 
-// EVENT_STALE, EVENT_REQUEST_STALE, EVENT_CHANGED_IP, EVENT_DUPLICATE_IP, EVENT_DUPLICATE_MAC, EVENT_SCAN, EVENT_IP_NOT_ON_NETWORK, EVENT_SRC_MAC_BROADCAST, EVENT_REQUESTED_SELF = ALERT_TYPES
 
 impl NetgraspEvent {
     pub fn new(interface: String) -> Self {
