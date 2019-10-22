@@ -65,6 +65,7 @@ const EVENT_IP_SEEN_FIRST: &str = "ip first seen";
 const EVENT_VENDOR_SEEN: &str = "vendor seen";
 const EVENT_VENDOR_SEEN_FIRST: &str = "vendor first seen";
 const EVENT_IP_INACTIVE: &str = "ip inactive";
+const EVENT_IP_RETURNED: &str = "ip returned";
 // EVENT_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE, EVENT_FIRST_SEEN_DEVICE_RECENTLY, 
 // EVENT_STALE, EVENT_REQUEST_STALE, EVENT_CHANGED_IP, EVENT_DUPLICATE_IP, EVENT_DUPLICATE_MAC, EVENT_SCAN, EVENT_IP_NOT_ON_NETWORK, EVENT_SRC_MAC_BROADCAST, EVENT_REQUESTED_SELF = ALERT_TYPES
 
@@ -400,6 +401,7 @@ impl NetgraspDb {
     pub fn load_ip_id(&self, mut netgrasp_event: NetgraspEvent, ip_address: String) -> NetgraspEvent {
         //use crate::db::schema::ip;
         use crate::db::schema::ip::dsl::*;
+        use crate::db::schema::arp::dsl::{created, arp, src_ip};
 
         debug_assert!(ip_address != "0.0.0.0");
         netgrasp_event.ip_address = ip_address;
@@ -462,6 +464,25 @@ impl NetgraspDb {
                             }
                         self.log_event(&netgrasp_event, EVENT_IP_SEEN_FIRST);
                         self.send_notification(&netgrasp_event, "New IP seen", &netgrasp_event.ip_address, "A new IP address has been seen on your network", 120);
+                    }
+                    else {
+                        // Determine the last time the IP was seen recently.
+                        let previously_seen_query = arp
+                            .select(created)
+                            .filter(src_ip.eq(&netgrasp_event.ip_address))
+                            .order(created.desc())
+                            .limit(2);
+                            debug!("load_ip_id: previously_seen_query {}", debug_query::<Sqlite, _>(&previously_seen_query).to_string());
+                        let now = time::timestamp_now();
+                        let inactive_before: i32 = (now - IPS_ACTIVE_FOR) as i32;
+                        let previously_seen: i32 = match previously_seen_query.get_result(&self.sql) {
+                            Ok(p) => p,
+                            Err(_) => now as i32,
+                        };
+                        if previously_seen < inactive_before {
+                            self.log_event(&netgrasp_event, EVENT_IP_RETURNED);
+                            self.send_notification(&netgrasp_event, "IP returned", &netgrasp_event.ip_address, "An IP address has returned to your network", 120);
+                        }
                     }
                 }
                 // Return the ip_id.
@@ -577,7 +598,7 @@ impl NetgraspDb {
                     self.send_notification(&i, "IP inactive", &i.ip_address, "An ip has gone inactive on your network", 100);
                 }
                 Err(e) => {
-                    error!("Unexpected error loading inactive ip event details: {}", e);
+                    info!("Unexpected error loading inactive ip event details: {}", e);
                 }
             }
         }
