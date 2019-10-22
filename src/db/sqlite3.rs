@@ -162,10 +162,10 @@ impl NetgraspDb {
 
         match arp_packet.operation {
             ArpOperation::Request => {
-                trace!("ARP request");
+                trace!("log_arp_packet: ARP request");
                 // A MAC broadcast isn't a real MAC address, so don't store it.
                 if arp_packet.src_is_broadcast {
-                    debug!("ignoring arp broadcast source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
+                    debug!("log_arp_packet: ignoring arp broadcast source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
                 }
                 // Log all non-broadcast mac addresses.
                 else {
@@ -175,7 +175,7 @@ impl NetgraspDb {
                 if arp_packet.src_ip != arp_packet.tgt_ip && arp_packet.src_mac != arp_packet.tgt_mac {
                     // A MAC broadcast isn't a real MAC address, so don't store it.
                     if arp_packet.tgt_is_broadcast {
-                        debug!("ignoring arp broadcast target of {} [{}]", arp_packet.tgt_ip, arp_packet.tgt_mac)
+                        debug!("log_arp_packet: ignoring arp broadcast target of {} [{}]", arp_packet.tgt_ip, arp_packet.tgt_mac)
                     }
                     // Log all non-broadcast IP addresses.
                     else {
@@ -189,7 +189,7 @@ impl NetgraspDb {
                 trace!("ARP reply");
                 // A MAC broadcast isn't a real MAC address, so don't store it.
                 if arp_packet.src_is_broadcast {
-                    debug!("ignoring arp broadcast source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
+                    debug!("log_arp_packet: ignoring arp broadcast source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
                 }
                 // Log all non-broadcast mac addresses.
                 else {
@@ -198,28 +198,28 @@ impl NetgraspDb {
                 operation = 1;
             }
             _ => {
-                info!("invalid ARP packet: {:?}", arp_packet);
+                info!("log_arp_packet: invalid ARP packet: {:?}", arp_packet);
                 operation = -1;
             }
         }
 
         // We have a valid MAC address to associate with the IP address.
         if netgrasp_event_src.mac_id != 0 {
-            debug!("source mac_id: {}", netgrasp_event_src.mac_id);
+            debug!("log_arp_packet: source mac_id: {}", netgrasp_event_src.mac_id);
             // We don't record the broadcast of 0.0.0.0.
             if arp_packet.src_ip.to_string() == "0.0.0.0" {
-                debug!("ignoring arp ip source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
+                debug!("log_arp_packet: ignoring arp ip source of {} [{}]", arp_packet.src_ip, arp_packet.src_mac)
             }
             // Record all other addresses.
             else {
                 netgrasp_event_src = self.load_ip_id(netgrasp_event_src, arp_packet.src_ip.to_string());
-                debug!("source ip_id: {}", netgrasp_event_src.ip_id);
+                debug!("log_arp_packet: source ip_id: {}", netgrasp_event_src.ip_id);
             }
         }
 
         // We recorded the target IP in our database.
         if netgrasp_event_tgt.ip_id != 0 {
-            debug!("target ip_id: {}", netgrasp_event_tgt.ip_id);
+            debug!("log_arp_packet: target ip_id: {}", netgrasp_event_tgt.ip_id);
         }
 
         let new_arp = NewArp {
@@ -247,10 +247,10 @@ impl NetgraspDb {
 
         let insert_arp_query = diesel::insert_into(arp::table)
             .values(&new_arp);
-        debug!("log_arp_packet: {}", debug_query::<Sqlite, _>(&insert_arp_query).to_string());
+        debug!("log_arp_packet: log_arp_packet: {}", debug_query::<Sqlite, _>(&insert_arp_query).to_string());
         match insert_arp_query.execute(&self.sql) {
             Ok(_) => (),
-            Err(e) => error!("Error logging arp packet to database: [{}]", e),
+            Err(e) => error!("log_arp_packet: failed to write arp packet to database: [{}]", e),
         }
     }
 
@@ -576,7 +576,7 @@ impl NetgraspDb {
         let inactive_ip_ids: Vec<DistinctIpId> = match inactive_ip_ids_query.load::<DistinctIpId>(&self.sql) {
             Ok(i) => i,
             Err(e) => {
-                error!("Unexpected error loading inactive ip ids: {}", e);
+                error!("process_inactive_ips: unexpected error loading inactive ip ids: {}", e);
                 // This shouldn't happen, exit.
                 std::process::exit(1);
             }
@@ -598,7 +598,7 @@ impl NetgraspDb {
                     self.send_notification(&i, "IP inactive", &i.ip_address, "An ip has gone inactive on your network", 100);
                 }
                 Err(e) => {
-                    info!("Unexpected error loading inactive ip event details: {}", e);
+                    info!("process_inactive_ips: failed to load inactive ip event details: {}", e);
                 }
             }
         }
