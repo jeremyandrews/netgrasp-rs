@@ -1,6 +1,7 @@
 //use super::schema::{arp, ip, mac, vendor, event};
 use super::schema::{arp, ip, mac, vendor};
 
+/*
 #[derive(Queryable, Debug)]
 pub struct Arp {
     pub arp_id: i32,
@@ -27,6 +28,7 @@ pub struct Arp {
     pub created: i32,
     pub updated: i32,
 }
+*/
 
 #[derive(Insertable)]
 #[table_name = "arp"]
