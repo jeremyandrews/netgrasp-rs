@@ -13,7 +13,7 @@ pub fn display_active_devices(active_devices: Vec<NetgraspActiveDevice>) {
         else {
             name = device.vendor_full_name.to_string();
         }
-        println!("{:>34} {:>16} {:>22}", truncate_string(name, 33), truncate_string(device.ip_address.to_string(), 16), time_ago(device.recently_seen_last as u64, true));
+        println!("{:>34} {:>16} {:>22}", truncate_string(name, 33), truncate_string(device.ip_address.to_string(), 16), time_ago(device.recently_seen_last as u64, false));
     }
 }
 
