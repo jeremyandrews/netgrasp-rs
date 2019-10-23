@@ -132,7 +132,7 @@ fn netgrasp_event_type_description(netgrasp_event_type: NetgraspEventType) -> St
         NetgraspEventType::DeviceFirstSeen => "New device on network".to_string(),
         NetgraspEventType::DeviceSeen => "Device on network".to_string(),
         NetgraspEventType::DeviceInactive => "Device on network has gone inactive".to_string(),
-        NetgraspEventType::DeviceReturned => "Inactive device on network returned".to_string(),
+        NetgraspEventType::DeviceReturned => "Inactive device returned to network".to_string(),
         //NetgraspEventType::NetworkScan => "network scan".to_string(),
     }
 }
@@ -743,7 +743,7 @@ impl NetgraspDb {
                         Some(t) => {
                             let g: i32 = *t;
                             let timestamp: u64 = g.try_into().expect("failed to convert i32 to u64");
-                            format::time_ago(timestamp)
+                            format::time_ago(timestamp, true)
                         },
                         None => "never".to_string(),
                     };
@@ -799,7 +799,7 @@ impl NetgraspDb {
             notification.add_value("wrapped_vendor".to_string(), wrapped_vendor);
             notification.add_value("detail".to_string(), netgrasp_event_type_description(netgrasp_event_type.clone()));
             notification.add_value("interface".to_string(), netgrasp_event.interface.clone());
-            notification.add_value("first_seen".to_string(), format::time_ago(first_seen));
+            notification.add_value("first_seen".to_string(), format::time_ago(first_seen, true));
             notification.add_value("previously_seen".to_string(), previously_seen_string);
             notification.add_value("recently_seen".to_string(), recently_seen_string);
             notification.set_title_template(templates::NETGRASP_TITLE_TEMPLATE.to_string());
