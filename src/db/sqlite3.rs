@@ -92,86 +92,133 @@ enum NetgraspEventType {
     NetworkScan,
 }
 
-fn netgrasp_event_type_name(netgrasp_event_type: NetgraspEventType) -> String {
+struct NetgraspEventDetail {
+    name: String,
+    description: String,
+    priority: u8,
+}
+
+fn netgrasp_event_detail(netgrasp_event_type: NetgraspEventType) -> NetgraspEventDetail {
     match netgrasp_event_type {
-        NetgraspEventType::Undeclared => "undeclared event".to_string(),
-        NetgraspEventType::VendorFirstSeen => "new vendor".to_string(),
-        NetgraspEventType::VendorSeen => "vendor seen".to_string(),
-        NetgraspEventType::MacFirstSeen => "new mac".to_string(),
-        NetgraspEventType::MacSeen => "mac seen".to_string(),
-        //NetgraspEventType::MacDuplicate => "Duplicate mac".to_string(),
-        //NetgraspEventType::MacBroadcast => "mac broadcast".to_string(),
-        NetgraspEventType::IpFirstRequest => "new IP requested".to_string(),
-        NetgraspEventType::IpRequest => "IP requested".to_string(),
-        //NetgraspEventType::IpRequestSelf => "IP requested self".to_string(),
-        NetgraspEventType::IpFirstSeen => "new IP".to_string(),
-        NetgraspEventType::IpSeen => "IP seen".to_string(),
-        NetgraspEventType::IpInactive => "IP inactive".to_string(),
-        NetgraspEventType::IpReturned => "IP returned".to_string(),
-        //NetgraspEventType::IpChanged => "IP changed".to_string(),
-        //NetgraspEventType::IpDuplicate => "duplicate IP".to_string(),
-        //NetgraspEventType::IpNotOnNetwork => "IP not on network".to_string(),
-        NetgraspEventType::DeviceFirstSeen => "new device".to_string(),
-        NetgraspEventType::DeviceSeen => "device seen".to_string(),
-        NetgraspEventType::DeviceInactive => "device inactive".to_string(),
-        NetgraspEventType::DeviceReturned => "device returned".to_string(),
-        NetgraspEventType::NetworkScan => "network scan".to_string(),
+        NetgraspEventType::Undeclared => NetgraspEventDetail {
+            name: "undeclared event".to_string(),
+            description: "Undeclared network event".to_string(),
+            priority: 0,
+        },
+        NetgraspEventType::MacSeen => NetgraspEventDetail {
+            name: "mac seen".to_string(),
+            description: "Nac address on network".to_string(),
+            priority: 3,
+        },
+        /*
+        NetgraspEventType::MacBroadcast => NetgraspEventDetail {
+            name: "mac broadcast".to_string(),
+            description: "Mac broadcast on network".to_string(),
+            priority: 3,
+        },
+        */
+        NetgraspEventType::IpRequest => NetgraspEventDetail {
+            name: "IP requested".to_string(),
+            description: "Requested mac address of an IP on network".to_string(),
+            priority: 5,
+        },
+        NetgraspEventType::IpSeen => NetgraspEventDetail {
+            name: "IP seen".to_string(),
+            description: "IP on network".to_string(),
+            priority: 6,
+        },
+        NetgraspEventType::VendorSeen => NetgraspEventDetail {
+            name: "vendor seen".to_string(),
+            description: "Vendor on network".to_string(),
+            priority: 8,
+        },
+        NetgraspEventType::DeviceSeen => NetgraspEventDetail {
+            name: "device seen".to_string(),
+            description: "Device on network".to_string(),
+            priority: 12,
+        },
+        /*
+        NetgraspEventType::IpRequestSelf => NetgraspEventDetail {
+            name: "IP requested self".to_string(),
+            description: "Mac address associated with IP requested self".to_string(),
+            priority: 20,
+        },
+        */
+        NetgraspEventType::VendorFirstSeen => NetgraspEventDetail {
+            name: "new vendor".to_string(),
+            description: "New vendor on network".to_string(),
+            priority: 100,
+        },
+        NetgraspEventType::IpInactive => NetgraspEventDetail {
+            name: "IP inactive".to_string(),
+            description: "IP on network has gone inactive".to_string(),
+            priority: 100,
+        },
+        NetgraspEventType::IpFirstRequest => NetgraspEventDetail {
+            name: "new IP requested".to_string(),
+            description: "Requested mac address of a new IP on network".to_string(),
+            priority: 110,
+        },
+        NetgraspEventType::DeviceInactive => NetgraspEventDetail {
+            name: "device inactive".to_string(),
+            description: "Device on network has gone inactive".to_string(),
+            priority: 110,
+        },
+        NetgraspEventType::MacFirstSeen => NetgraspEventDetail {
+            name: "new mac".to_string(),
+            description: "New mac address on network".to_string(),
+            priority: 120,
+        },
+        NetgraspEventType::IpFirstSeen => NetgraspEventDetail {
+            name: "new IP".to_string(),
+            description: "New IP on network".to_string(),
+            priority: 125,
+        },
+        NetgraspEventType::IpReturned => NetgraspEventDetail {
+            name: "IP returned".to_string(),
+            description: "Inactive IP on network returned".to_string(),
+            priority: 125,
+        },
+        /*
+        NetgraspEventType::IpChanged => NetgraspEventDetail {
+            name: "IP changed".to_string(),
+            description: "IP address changed".to_string(),
+            priority: 140,
+        },
+        NetgraspEventType::IpDuplicate => NetgraspEventDetail {
+            name: "duplicate IP".to_string(),
+            description: "Duplicate IP on network".to_string(),
+            priority: 140,
+        },
+        NetgraspEventType::IpNotOnNetwork => NetgraspEventDetail {
+            name: "IP not on network".to_string(),
+            description: "IP not on network".to_string(),
+            priority: 140,
+        },
+        NetgraspEventType::MacDuplicate => NetgraspEventDetail {
+            name: "Duplicate mac".to_string(),
+            description: "Duplicate mac addresses on network".to_string(),
+            priority: 150,
+        },
+        */
+        NetgraspEventType::DeviceFirstSeen => NetgraspEventDetail {
+            name: "new device".to_string(),
+            description: "New device on network".to_string(),
+            priority: 150,
+        },
+        NetgraspEventType::DeviceReturned => NetgraspEventDetail {
+            name: "device returned".to_string(),
+            description: "Inactive device returned to network".to_string(),
+            priority: 150,
+        },
+        NetgraspEventType::NetworkScan => NetgraspEventDetail {
+            name: "network scan".to_string(),
+            description: "Device performed a network scan".to_string(),
+            priority: 150,
+        },
     }
 }
 
-fn netgrasp_event_type_description(netgrasp_event_type: NetgraspEventType) -> String {
-    match netgrasp_event_type {
-        NetgraspEventType::Undeclared => "Undeclared network event".to_string(),
-        NetgraspEventType::VendorFirstSeen => "New vendor on network".to_string(),
-        NetgraspEventType::VendorSeen => "Vendor on network".to_string(),
-        NetgraspEventType::MacFirstSeen => "New mac address on network".to_string(),
-        NetgraspEventType::MacSeen => "Nac address on network".to_string(),
-        //NetgraspEventType::MacDuplicate => "Duplicate mac addresses on network".to_string(),
-        //NetgraspEventType::MacBroadcast => "Mac broadcast on network".to_string(),
-        NetgraspEventType::IpFirstRequest => "Requested mac address of a new IP on network".to_string(),
-        NetgraspEventType::IpRequest => "Requested mac address of an IP on network".to_string(),
-        //NetgraspEventType::IpRequestSelf => "Mac address associated with IP requested self".to_string(),
-        NetgraspEventType::IpFirstSeen => "New IP on network".to_string(),
-        NetgraspEventType::IpSeen => "IP on network".to_string(),
-        NetgraspEventType::IpInactive => "IP on network has gone inactive".to_string(),
-        NetgraspEventType::IpReturned => "Inactive IP on network returned".to_string(),
-        //NetgraspEventType::IpChanged => "IP address changed".to_string(),
-        //NetgraspEventType::IpDuplicate => "Duplicate IP on network".to_string(),
-        //NetgraspEventType::IpNotOnNetwork => "IP not on network".to_string(),
-        NetgraspEventType::DeviceFirstSeen => "New device on network".to_string(),
-        NetgraspEventType::DeviceSeen => "Device on network".to_string(),
-        NetgraspEventType::DeviceInactive => "Device on network has gone inactive".to_string(),
-        NetgraspEventType::DeviceReturned => "Inactive device returned to network".to_string(),
-        NetgraspEventType::NetworkScan => "Device performed a network scan".to_string(),
-    }
-}
-
-fn netgrasp_event_type_priority(netgrasp_event_type: NetgraspEventType) -> u8 {
-    match netgrasp_event_type {
-        NetgraspEventType::Undeclared => 0,
-        NetgraspEventType::VendorFirstSeen => 100,
-        NetgraspEventType::VendorSeen => 8,
-        NetgraspEventType::MacFirstSeen => 120,
-        NetgraspEventType::MacSeen => 3,
-        //NetgraspEventType::MacDuplicate => 150,
-        //NetgraspEventType::MacBroadcast => 3,
-        NetgraspEventType::IpFirstRequest => 110,
-        NetgraspEventType::IpRequest => 5,
-        //NetgraspEventType::IpRequestSelf => 20,
-        NetgraspEventType::IpFirstSeen => 120,
-        NetgraspEventType::IpSeen => 5,
-        NetgraspEventType::IpInactive => 100,
-        NetgraspEventType::IpReturned => 120,
-        //NetgraspEventType::IpChanged => 140,
-        //NetgraspEventType::IpDuplicate => 140,
-        //NetgraspEventType::IpNotOnNetwork => 140,
-        NetgraspEventType::DeviceFirstSeen => 150,
-        NetgraspEventType::DeviceSeen => 12,
-        NetgraspEventType::DeviceInactive => 110,
-        NetgraspEventType::DeviceReturned => 150,
-        NetgraspEventType::NetworkScan => 150,
-    }
-}
 
 fn device_name(netgrasp_event: &NetgraspEvent) -> String {
     if !netgrasp_event.host_name.is_empty() && netgrasp_event.host_name != netgrasp_event.ip_address {
@@ -184,6 +231,7 @@ fn device_name(netgrasp_event: &NetgraspEvent) -> String {
 
 impl NetgraspEvent {
     pub fn new(interface: String) -> Self {
+        let event_detail = netgrasp_event_detail(NetgraspEventType::Undeclared);
         NetgraspEvent {
             timestamp: time::timestamp_now() as i32,
             interface: interface,
@@ -192,8 +240,8 @@ impl NetgraspEvent {
             is_self: 0,
             ip_id: 0,
             ip_address: "".to_string(),
-            event_type: netgrasp_event_type_name(NetgraspEventType::Undeclared),
-            event_description: netgrasp_event_type_description(NetgraspEventType::Undeclared),
+            event_type: event_detail.name,
+            event_description: event_detail.description,
             host_name: "".to_string(),
             custom_name: "".to_string(),
             vendor_id: 0,
@@ -338,6 +386,7 @@ impl NetgraspDb {
             debug!("log_arp_packet: target ip_id: {}", netgrasp_event_tgt.ip_id);
         }
 
+        let event_detail = netgrasp_event_detail(NetgraspEventType::Undeclared);
         let new_arp = NewArp {
             src_mac_id: netgrasp_event_src.mac_id,
             src_ip_id: netgrasp_event_src.ip_id,
@@ -357,8 +406,8 @@ impl NetgraspDb {
             is_active: 1,
             processed: 0,
             matched: 0,
-            event_type: netgrasp_event_type_name(NetgraspEventType::Undeclared),
-            event_description: netgrasp_event_type_description(NetgraspEventType::Undeclared),
+            event_type: event_detail.name,
+            event_description: event_detail.description,
             created: netgrasp_event_src.timestamp,
             updated: netgrasp_event_src.timestamp
         };
@@ -751,10 +800,10 @@ impl NetgraspDb {
         use crate::db::schema::arp::dsl::*;
         use std::convert::TryInto;
 
-        let priority: u8 = netgrasp_event_type_priority(netgrasp_event_type.clone());
+        let event_detail = netgrasp_event_detail(netgrasp_event_type);
 
         // @TODO: Expose this to configuration:
-        if priority > 120 {
+        if event_detail.priority > 120 {
             // Determine how many times the IP was seen recently.
             let now = time::timestamp_now();
             let inactive_before: i32 = (now - IPS_ACTIVE_FOR) as i32;
@@ -817,8 +866,8 @@ impl NetgraspDb {
                 Err(_) => time::timestamp_now(),
             };
 
-            let mut notification = Notification::init("Netgrasp", "", &netgrasp_event_type_description(netgrasp_event_type.clone()));
-            notification.add_value("event".to_string(), netgrasp_event_type_name(netgrasp_event_type.clone()));
+            let mut notification = Notification::init("Netgrasp", "", &event_detail.description);
+            notification.add_value("event".to_string(), event_detail.name);
             notification.add_value("device".to_string(), device.to_string());
             if netgrasp_event.ip_address != "" {
                 notification.add_value("ip".to_string(), netgrasp_event.ip_address.clone());
@@ -847,7 +896,7 @@ impl NetgraspDb {
                 wrapped_vendor = format!("({})", netgrasp_event.vendor_full_name.clone());
             }
             notification.add_value("wrapped_vendor".to_string(), wrapped_vendor);
-            notification.add_value("detail".to_string(), netgrasp_event_type_description(netgrasp_event_type.clone()));
+            notification.add_value("detail".to_string(), event_detail.description);
             notification.add_value("interface".to_string(), netgrasp_event.interface.clone());
             notification.add_value("first_seen".to_string(), format::time_ago(first_seen, true));
             notification.add_value("previously_seen".to_string(), previously_seen_string);
@@ -857,7 +906,7 @@ impl NetgraspDb {
             notification.set_short_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
             notification.set_long_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
             notification.set_long_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
-            match notification.send("http://localhost:8000", priority, 0, None) {
+            match notification.send("http://localhost:8000", event_detail.priority, 0, None) {
                 Err(e) => eprintln!("Error sending notification: {:?}", e),
                 Ok(_) => (),
             };

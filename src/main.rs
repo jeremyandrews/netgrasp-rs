@@ -128,7 +128,7 @@ fn main() {
     
     CombinedLogger::init(
         vec![
-            TermLogger::new(debug_level, Config::default()).unwrap(),
+            TermLogger::new(debug_level, Config::default(), TerminalMode::Mixed).unwrap(),
             WriteLogger::new(log_level, Config::default(), File::create(&log_file).unwrap()),
         ]
     ).unwrap();
