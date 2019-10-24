@@ -706,12 +706,13 @@ impl NetgraspDb {
         }
     }
 
-    pub fn detect_netscan(&self) -> bool {
+    pub fn detect_netscan(&self, scan_range: u64) -> bool {
         use crate::db::schema::arp::dsl::*;
 
         let mut detected_netscan = false;
-        let load_netscan_query = sql_query("SELECT COUNT(DISTINCT tgt_ip_id) AS tgt_ip_id_count, src_ip_id FROM arp GROUP BY src_ip_id HAVING tgt_ip_id_count > ?")
-            // @TODO: expose as configuration
+        let load_netscan_query = sql_query("SELECT COUNT(DISTINCT tgt_ip_id) AS tgt_ip_id_count, src_ip_id FROM arp WHERE created > ? GROUP BY src_ip_id HAVING tgt_ip_id_count > ?")
+            .bind::<Integer, _>(time::elapsed(scan_range) as i32)
+            // @TODO: expose as configuration how many devices talked to constitutes a netscan
             .bind::<Integer, _>(50);
         debug!("detect_netscan: load_netscan_query: {}", debug_query::<Sqlite, _>(&load_netscan_query).to_string());
         match load_netscan_query.get_results::<NetworkScan>(&self.sql) {

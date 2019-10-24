@@ -33,7 +33,7 @@ mod notifications {
 }
 
 // By default look for netscans happening over 30 minnutes
-const DEFAULT_NETSCAN_RANGE: usize = 30;
+const DEFAULT_NETSCAN_RANGE: u64 = 30;
 const DEFAULT_PROCESS_INACTIVE_IPS: u64 = 30;
 const DEFAULT_PROCESS_NETSCANS: u64 = 30;
 
@@ -208,7 +208,7 @@ fn main() {
 
         if (now - DEFAULT_PROCESS_NETSCANS) > last_processed_network_scans {
             last_processed_network_scans = now;
-            match netgrasp_db.detect_netscan() {
+            match netgrasp_db.detect_netscan(netscan_range) {
                 true => {
                     // Once we detect a netscan, we shrink the range to only 1 minute so we
                     // don't keep re-detecting the same scan. We slowly increase the range by
@@ -226,6 +226,5 @@ fn main() {
                 }
             }
         }
-        netgrasp_db.detect_netscan();
     }
 }
