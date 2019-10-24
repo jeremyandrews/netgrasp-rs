@@ -32,6 +32,11 @@ mod notifications {
     pub mod templates;
 }
 
+// By default look for netscans happening over 30 minnutes
+const DEFAULT_NETSCAN_RANGE: usize = 30;
+const DEFAULT_PROCESS_INACTIVE_IPS: u64 = 30;
+const DEFAULT_PROCESS_NETSCANS: u64 = 30;
+
 // List all interfaces.
 fn list_interfaces() -> Vec<String> {
     let mut ifaces: Vec<String> = Vec::new();
@@ -183,8 +188,10 @@ fn main() {
         Ok(_) => (),
     }
 
-    // Track the last time we processed inactive ips
     let mut last_processed_inactive_ips: u64 = 0;
+    let mut last_processed_network_scans: u64 = 0;
+    let mut netscan_range = DEFAULT_NETSCAN_RANGE;
+
     loop {
         let received = arp_rx.recv().unwrap();
         netgrasp_db.log_arp_packet(received);
@@ -194,9 +201,31 @@ fn main() {
         utils::format::display_active_devices(active_devices);
 
         let now = utils::time::timestamp_now();
-        if now - 60 > last_processed_inactive_ips {
+        if (now - DEFAULT_PROCESS_INACTIVE_IPS) > last_processed_inactive_ips {
             last_processed_inactive_ips = now;
             netgrasp_db.process_inactive_ips();
         }
+
+        if (now - DEFAULT_PROCESS_NETSCANS) > last_processed_network_scans {
+            last_processed_network_scans = now;
+            match netgrasp_db.detect_netscan() {
+                true => {
+                    // Once we detect a netscan, we shrink the range to only 1 minute so we
+                    // don't keep re-detecting the same scan. We slowly increase the range by
+                    // 1 minute each minute until we get back to the DEFAULT_NETSCAN_RANGE.
+                    netscan_range = 1;
+                    info!("netscan detected, decreasing netscan range to {}", netscan_range);
+                }
+                false => {
+                    // This assumes process_network_scan_every is 60 seconds, otherwise this
+                    // logic needs to be changed so the range increases correctly.
+                    if netscan_range < DEFAULT_NETSCAN_RANGE {
+                        netscan_range += 1;
+                        info!("increasing netscan range to {}", netscan_range);
+                    }
+                }
+            }
+        }
+        netgrasp_db.detect_netscan();
     }
 }

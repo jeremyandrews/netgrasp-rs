@@ -57,6 +57,15 @@ pub struct DistinctIpId {
     pub src_ip_id: i32,
 }
 
+#[derive(Debug, Default, Queryable, QueryableByName)]
+pub struct NetworkScan {
+    #[sql_type = "Integer"]
+    pub tgt_ip_id_count: i32,
+    #[sql_type = "Integer"]
+    pub src_ip_id: i32,
+}
+
+
 #[derive(Debug, Clone)]
 enum NetgraspEventType {
     Undeclared,
@@ -80,7 +89,7 @@ enum NetgraspEventType {
     DeviceSeen,
     DeviceInactive,
     DeviceReturned,
-    //NetworkScan,
+    NetworkScan,
 }
 
 fn netgrasp_event_type_name(netgrasp_event_type: NetgraspEventType) -> String {
@@ -106,7 +115,7 @@ fn netgrasp_event_type_name(netgrasp_event_type: NetgraspEventType) -> String {
         NetgraspEventType::DeviceSeen => "device seen".to_string(),
         NetgraspEventType::DeviceInactive => "device inactive".to_string(),
         NetgraspEventType::DeviceReturned => "device returned".to_string(),
-        //NetgraspEventType::NetworkScan => "network scan".to_string(),
+        NetgraspEventType::NetworkScan => "network scan".to_string(),
     }
 }
 
@@ -133,7 +142,7 @@ fn netgrasp_event_type_description(netgrasp_event_type: NetgraspEventType) -> St
         NetgraspEventType::DeviceSeen => "Device on network".to_string(),
         NetgraspEventType::DeviceInactive => "Device on network has gone inactive".to_string(),
         NetgraspEventType::DeviceReturned => "Inactive device returned to network".to_string(),
-        //NetgraspEventType::NetworkScan => "network scan".to_string(),
+        NetgraspEventType::NetworkScan => "network scan".to_string(),
     }
 }
 
@@ -160,7 +169,7 @@ fn netgrasp_event_type_priority(netgrasp_event_type: NetgraspEventType) -> u8 {
         NetgraspEventType::DeviceSeen => 12,
         NetgraspEventType::DeviceInactive => 110,
         NetgraspEventType::DeviceReturned => 150,
-        //NetgraspEventType::NetworkScan => 150,
+        NetgraspEventType::NetworkScan => 150,
     }
 }
 
@@ -680,7 +689,7 @@ impl NetgraspDb {
                     self.send_notification(&netgrasp_event, NetgraspEventType::DeviceInactive, &device_name(&netgrasp_event));
                 }
                 Err(e) => {
-                    info!("process_inactive_ips: failed to load inactive ip event details: {}", e);
+                    debug!("process_inactive_ips: failed to load inactive ip event details: {}", e);
                 }
             }
         }
@@ -695,6 +704,39 @@ impl NetgraspDb {
             Err(e) => eprintln!("unexpected error processing inactive ips: {}", e),
             Ok(_) => (),
         }
+    }
+
+    pub fn detect_netscan(&self) -> bool {
+        use crate::db::schema::arp::dsl::*;
+
+        let mut detected_netscan = false;
+        let load_netscan_query = sql_query("SELECT COUNT(DISTINCT tgt_ip_id) AS tgt_ip_id_count, src_ip_id FROM arp GROUP BY src_ip_id HAVING tgt_ip_id_count > ?")
+            // @TODO: expose as configuration
+            .bind::<Integer, _>(50);
+        debug!("detect_netscan: load_netscan_query: {}", debug_query::<Sqlite, _>(&load_netscan_query).to_string());
+        match load_netscan_query.get_results::<NetworkScan>(&self.sql) {
+            Ok(netscans) => for netscan in netscans {
+                let netscan_event_query = arp
+                    .select((updated, interface, src_mac_id, src_mac, is_self, src_ip_id, src_ip, event_type, event_description, host_name, custom_name, src_vendor_id, vendor_name, vendor_full_name))
+                    .filter(src_ip_id.eq(netscan.src_ip_id));
+                debug!("detect_netscan: netscan_event_query: {}", debug_query::<Sqlite, _>(&netscan_event_query).to_string());
+                match netscan_event_query.get_result(&self.sql) {
+                    Ok(i) => {
+                        let netgrasp_event: NetgraspEvent = i;
+                        self.send_notification(&netgrasp_event, NetgraspEventType::NetworkScan, &device_name(&netgrasp_event));
+                        detected_netscan = true;
+                    }
+                    Err(e) => {
+                        info!("detect_netscan: failed to load netscan event details: {}", e);
+                    }
+                }
+            },
+            Err(e) => {
+                debug!("detect_netscan: load_netscan_query: error: {}", e);
+                return detected_netscan
+            }
+        }
+        detected_netscan
     }
 
     fn send_notification(&self, netgrasp_event: &NetgraspEvent, netgrasp_event_type: NetgraspEventType, device: &str) {
