@@ -2,7 +2,7 @@
 
 A passive network observation tool.
 
-Oxidizing Netgrasp.
+Oxidized Netgrasp.
 <https://github.com/jeremyandrews/netgrasp>
 
 ## Details
@@ -14,7 +14,7 @@ Oxidizing Netgrasp.
 * Leverages [reqwest](https://crates.io/crates/reqwest) to automatically download Wireshark OUI database.
 * Leverages [simplelog](https://lib.rs/crates/simplelog) to provide logging to stdout and files.
 * Leverages [smoltcp](https://lib.rs/crates/smoltcp) to monitor a network interface for ARP packets.
-* Leverages [sqlite](https://crates.io/crates/sqlite) to integrate with Sqlite3.
+* Leverages [diesel](https://crates.io/crates/diesel) to integrate with Sqlite3.
 
 ## TODO
 
@@ -26,16 +26,7 @@ Oxidizing Netgrasp.
 1. Daemonize (<https://github.com/knsd/daemonize)>
     * drop permissions where unnecessary
 1. Process events
-1. Notifications (email, other?)
-    * to review (<https://crates.io/crates/mailstrom>)
-    * to review (<https://crates.io/crates/lettre_email>)
-    * to review (<https://crates.io/crates/mail>)
-    * to review (<https://crates.io/crates/notify-rust>)
 1. Support graceful shutdown
 1. Support monitoring multiple interfaces at the same time
-1. Don't panic on failures, handle gracefully
-    * handle the ethernet interface going away (gracefully shutdown? or sleep and retry?)
-    * handle bad packets
-    * handle SQL errors
 1. Implement tests
 1. Expose data and control through API

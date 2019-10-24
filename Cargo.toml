@@ -1,6 +1,6 @@
 [package]
 name = "netgrasp"
-version = "0.10.0"
+version = "0.10.1"
 authors = ["Jeremy Andrews <jeremy@tag1consulting.com>"]
 edition = "2018"
 

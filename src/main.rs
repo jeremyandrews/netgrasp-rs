@@ -193,8 +193,13 @@ fn main() {
     let mut netscan_range = DEFAULT_NETSCAN_RANGE;
 
     loop {
-        let received = arp_rx.recv().unwrap();
-        netgrasp_db.log_arp_packet(received);
+        match arp_rx.recv() {
+            Ok(r) => netgrasp_db.log_arp_packet(r),
+            Err(e) => {
+                error!("fatal error, exiting: [{}]", e);
+                std::process::exit(1);
+            }
+        }
 
         // proof of concept: display current list of known active devices.
         let active_devices = netgrasp_db.get_active_devices();
