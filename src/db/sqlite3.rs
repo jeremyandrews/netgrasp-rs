@@ -803,7 +803,7 @@ impl NetgraspDb {
         let event_detail = netgrasp_event_detail(netgrasp_event_type);
 
         // @TODO: Expose this to configuration:
-        if event_detail.priority > 120 {
+        if event_detail.priority > 140 {
             // Determine how many times the IP was seen recently.
             let now = time::timestamp_now();
             let inactive_before: i32 = (now - IPS_ACTIVE_FOR) as i32;
