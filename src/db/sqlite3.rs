@@ -142,7 +142,7 @@ fn netgrasp_event_type_description(netgrasp_event_type: NetgraspEventType) -> St
         NetgraspEventType::DeviceSeen => "Device on network".to_string(),
         NetgraspEventType::DeviceInactive => "Device on network has gone inactive".to_string(),
         NetgraspEventType::DeviceReturned => "Inactive device returned to network".to_string(),
-        NetgraspEventType::NetworkScan => "network scan".to_string(),
+        NetgraspEventType::NetworkScan => "Device performed a network scan".to_string(),
     }
 }
 
@@ -715,19 +715,26 @@ impl NetgraspDb {
             .bind::<Integer, _>(50);
         debug!("detect_netscan: load_netscan_query: {}", debug_query::<Sqlite, _>(&load_netscan_query).to_string());
         match load_netscan_query.get_results::<NetworkScan>(&self.sql) {
-            Ok(netscans) => for netscan in netscans {
-                let netscan_event_query = arp
-                    .select((updated, interface, src_mac_id, src_mac, is_self, src_ip_id, src_ip, event_type, event_description, host_name, custom_name, src_vendor_id, vendor_name, vendor_full_name))
-                    .filter(src_ip_id.eq(netscan.src_ip_id));
-                debug!("detect_netscan: netscan_event_query: {}", debug_query::<Sqlite, _>(&netscan_event_query).to_string());
-                match netscan_event_query.get_result(&self.sql) {
-                    Ok(i) => {
-                        let netgrasp_event: NetgraspEvent = i;
-                        self.send_notification(&netgrasp_event, NetgraspEventType::NetworkScan, &device_name(&netgrasp_event));
-                        detected_netscan = true;
-                    }
-                    Err(e) => {
-                        info!("detect_netscan: failed to load netscan event details: {}", e);
+            Ok(netscans) => {
+                if netscans.len() > 0 {
+                    info!("detect_netscan: {} netscans", netscans.len());
+                }
+                for netscan in netscans {
+                    let netscan_event_query = arp
+                        .select((updated, interface, src_mac_id, src_mac, is_self, src_ip_id, src_ip, event_type, event_description, host_name, custom_name, src_vendor_id, vendor_name, vendor_full_name))
+                        .filter(src_ip_id.eq(netscan.src_ip_id))
+                        .limit(1);
+                    debug!("detect_netscan: netscan_event_query: {}", debug_query::<Sqlite, _>(&netscan_event_query).to_string());
+                    match netscan_event_query.get_result(&self.sql) {
+                        Ok(i) => {
+                            let netgrasp_event: NetgraspEvent = i;
+                            info!("detect_netscan: netscan of {}+ devices by {} ({}) [{}]", netscan.tgt_ip_id_count, &device_name(&netgrasp_event), &netgrasp_event.ip_address, &netgrasp_event.mac_address);
+                            self.send_notification(&netgrasp_event, NetgraspEventType::NetworkScan, &device_name(&netgrasp_event));
+                            detected_netscan = true;
+                        }
+                        Err(e) => {
+                            info!("detect_netscan: failed to load netscan event details: {}", e);
+                        }
                     }
                 }
             },
