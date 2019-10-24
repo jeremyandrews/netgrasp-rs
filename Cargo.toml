@@ -7,7 +7,7 @@ edition = "2018"
 [dependencies]
 smoltcp = "^0.5.0"
 clap = "^2.33.0"
-simplelog = "^0.5.3"
+simplelog = "^0.7"
 log = "^0.4.6"
 get_if_addrs = "^0.5.3"
 dns-lookup = "^1.0.0"
