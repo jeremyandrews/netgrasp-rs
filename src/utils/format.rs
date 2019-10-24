@@ -77,7 +77,7 @@ pub fn time_ago(timestamp: u64, precision: bool)-> String {
             }
         },
         1 => {
-            let time_string = "1 day".to_string() + match precision {
+            let time_string = "1 day ".to_string() + match precision {
                 true => {
                     seconds = seconds - 86400;
                     match seconds {
