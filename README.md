@@ -25,7 +25,6 @@ Oxidized Netgrasp.
     * use TOML like rust (<https://crates.io/crates/toml)>
 1. Daemonize (<https://github.com/knsd/daemonize)>
     * drop permissions where unnecessary
-1. Process events
 1. Support graceful shutdown
 1. Support monitoring multiple interfaces at the same time
 1. Implement tests

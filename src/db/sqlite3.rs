@@ -568,18 +568,20 @@ impl NetgraspDb {
             // @TODO: if ip.address == ip.host_name, perhaps perform another reverse IP lookup.
             // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
             // simply respect the DNS ttl?
-            load_ip_id = ip 
-                .filter(address.eq(&netgrasp_event.ip_address))
+            let load_ip_id_query = ip 
+                .filter(address.eq(&netgrasp_event.ip_address));
+            debug!("load_ip_id: {}", debug_query::<Sqlite, _>(&load_ip_id_query).to_string());
+            load_ip_id = load_ip_id_query
                 .get_result::<Ip>(&self.sql);
-            //debug!("load_ip_id: {}", debug_query::<Sqlite, _>(&load_ip_id_query).to_string());
         }
         // While this IP address does have an associated mac_id, it may not yet be in our database (mac_id = 0).
         else {
-            load_ip_id = sql_query("SELECT * FROM ip WHERE address = ? AND (mac_id = ? OR mac_id = 0)")
+            let load_ip_id_query = sql_query("SELECT * FROM ip WHERE address = ? AND (mac_id = ? OR mac_id = 0)")
                 .bind::<Text, _>(&netgrasp_event.ip_address)
-                .bind::<Integer, _>(netgrasp_event.mac_id)
+                .bind::<Integer, _>(netgrasp_event.mac_id);
+            debug!("load_ip_id: {}", debug_query::<Sqlite, _>(&load_ip_id_query).to_string());
+            load_ip_id = load_ip_id_query
                 .get_result::<Ip>(&self.sql);
-            //debug!("load_ip_id: {}", debug_query::<Sqlite, _>(&load_ip_id_query).to_string());
         }
 
         match load_ip_id {
