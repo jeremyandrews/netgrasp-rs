@@ -1,22 +1,37 @@
 use crate::db::sqlite3::{NetgraspActiveDevice};
 
+pub struct DeviceName {
+    pub custom_name: String,
+    pub host_name: String,
+    pub vendor_full_name: String,
+    pub ip_address: String,
+}
+
 // Display a list of all active devices
 pub fn display_active_devices(active_devices: Vec<NetgraspActiveDevice>) {
     println!("Active devices:");
     // {:>##} gives the column a fixed width of ## characters, aligned right
     println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
     for device in active_devices.iter() {
-        let name: String;
-        if device.custom_name != "" {
-            name = device.custom_name.to_string();
-        }
-        else if device.host_name != "" && device.host_name != device.ip_address {
-            name = device.host_name.to_string();
-        }
-        else {
-            name = device.vendor_full_name.to_string();
-        }
+        let name = device_name(DeviceName{
+            custom_name: device.custom_name.to_string(),
+            host_name: device.host_name.to_string(),
+            ip_address: device.ip_address.to_string(),
+            vendor_full_name: device.vendor_full_name.to_string(),
+        });
         println!("{:>34} {:>16} {:>22}", truncate_string(name, 33), truncate_string(device.ip_address.to_string(), 16), time_ago(device.recently_seen_last as u64, false));
+    }
+}
+
+pub fn device_name(device: DeviceName) -> String {
+    if device.custom_name != "" {
+        device.custom_name.to_string()
+    }
+    else if device.host_name != "" && device.host_name != device.ip_address {
+        device.host_name.to_string()
+    }
+    else {
+        device.vendor_full_name.to_string()
     }
 }
 

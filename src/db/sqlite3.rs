@@ -219,14 +219,13 @@ fn netgrasp_event_detail(netgrasp_event_type: NetgraspEventType) -> NetgraspEven
     }
 }
 
-
-fn device_name(netgrasp_event: &NetgraspEvent) -> String {
-    if !netgrasp_event.host_name.is_empty() && netgrasp_event.host_name != netgrasp_event.ip_address {
-        netgrasp_event.host_name.clone()
-    }
-    else {
-        netgrasp_event.vendor_full_name.clone()
-    }
+fn get_device_name(netgrasp_event: &NetgraspEvent) -> String {
+    format::device_name(format::DeviceName {
+        custom_name: netgrasp_event.custom_name.to_string(),
+        host_name: netgrasp_event.host_name.to_string(),
+        ip_address: netgrasp_event.ip_address.to_string(),
+        vendor_full_name: netgrasp_event.vendor_full_name.to_string(),
+    })
 }
 
 impl NetgraspEvent {
@@ -611,8 +610,8 @@ impl NetgraspDb {
                             }
                         netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::IpFirstSeen, &i.address);
                         // Devices are currently tied to IPs
-                        let device_name_string = &device_name(&netgrasp_event);
-                        netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::DeviceFirstSeen, &device_name_string);
+                        let device_name = get_device_name(&netgrasp_event);
+                        netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::DeviceFirstSeen, &device_name);
                     }
                     else {
                         // Determine the last time the IP was seen recently.
@@ -632,8 +631,8 @@ impl NetgraspDb {
                             let ip_address = netgrasp_event.ip_address.to_string();
                             netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::IpReturned, &ip_address);
                             // Devices are currently tied to IPs
-                            let device_name_string = &device_name(&netgrasp_event);
-                            netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::DeviceReturned, &device_name_string);
+                            let device_name = get_device_name(&netgrasp_event);
+                            netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::DeviceReturned, &device_name);
                         }
                     }
                 }
@@ -645,8 +644,8 @@ impl NetgraspDb {
                 }
                 else {
                     netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::IpSeen, &ip_address);
-                    let device_name_string = &device_name(&netgrasp_event);
-                    netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::DeviceSeen, &device_name_string);
+                    let device_name = get_device_name(&netgrasp_event);
+                    netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::DeviceSeen, &device_name);
                 }
             }
             // We're seeing this IP for the first time, add it to the database.
@@ -684,27 +683,12 @@ impl NetgraspDb {
                 else {
                     netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::IpFirstSeen, &ip_address);
                     // Devices are currently tied to IPs
-                    let device_name_string = &device_name(&netgrasp_event);
-                    netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::DeviceFirstSeen, &device_name_string);
+                    let device_name = get_device_name(&netgrasp_event);
+                    netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::DeviceFirstSeen, &device_name);
                 }
             }
         }
         netgrasp_event
-    }
-
-    fn get_name(&self, netgrasp_event: &NetgraspEvent) -> String {
-        if netgrasp_event.custom_name != "" {
-            netgrasp_event.custom_name.clone()
-        }
-        else if netgrasp_event.host_name != "" {
-            netgrasp_event.host_name.clone()
-        }
-        else if netgrasp_event.vendor_full_name != "" {
-            netgrasp_event.vendor_full_name.clone()
-        }
-        else {
-            "".to_string()
-        }
     }
 
     pub fn process_inactive_ips(&self) {
@@ -750,8 +734,8 @@ impl NetgraspDb {
                     let mut netgrasp_event: NetgraspEvent = i;
                     let ip_address = netgrasp_event.ip_address.to_string();
                     netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::IpInactive, &ip_address);
-                    let device_name_string = &device_name(&netgrasp_event);
-                    self.send_notification(netgrasp_event, NetgraspEventType::DeviceInactive, &device_name_string);
+                    let device_name = get_device_name(&netgrasp_event);
+                    self.send_notification(netgrasp_event, NetgraspEventType::DeviceInactive, &device_name);
                 }
                 Err(e) => {
                     debug!("process_inactive_ips: failed to load inactive ip event details: {}", e);
@@ -773,6 +757,7 @@ impl NetgraspDb {
 
     pub fn detect_netscan(&self, scan_range: u64) -> bool {
         use crate::db::schema::arp::dsl::*;
+        use crate::db::schema::ip;
 
         let mut detected_netscan = false;
         let load_netscan_query = sql_query("SELECT COUNT(DISTINCT tgt_ip_id) AS tgt_ip_id_count, src_ip_id FROM arp WHERE created > ? GROUP BY src_ip_id HAVING tgt_ip_id_count > ?")
@@ -787,16 +772,17 @@ impl NetgraspDb {
                 }
                 for netscan in netscans {
                     let netscan_event_query = arp
-                        .select((updated, interface, src_mac_id, src_mac, is_self, src_ip_id, src_ip, event_type, event_description, host_name, custom_name, src_vendor_id, vendor_name, vendor_full_name))
+                        .inner_join(ip::table)
+                        .select((updated, interface, src_mac_id, src_mac, is_self, src_ip_id, src_ip, event_type, event_description, ip::host_name, ip::custom_name, src_vendor_id, vendor_name, vendor_full_name))
                         .filter(src_ip_id.eq(netscan.src_ip_id))
                         .limit(1);
                     debug!("detect_netscan: netscan_event_query: {}", debug_query::<Sqlite, _>(&netscan_event_query).to_string());
                     match netscan_event_query.get_result(&self.sql) {
                         Ok(i) => {
                             let netgrasp_event: NetgraspEvent = i;
-                            info!("detect_netscan: netscan of {}+ devices by {} ({}) [{}]", netscan.tgt_ip_id_count, &device_name(&netgrasp_event), &netgrasp_event.ip_address, &netgrasp_event.mac_address);
-                            let device_name_string = &device_name(&netgrasp_event);
-                            self.send_notification(netgrasp_event, NetgraspEventType::NetworkScan, &device_name_string);
+                            info!("detect_netscan: netscan of {}+ devices by {} ({}) [{}]", netscan.tgt_ip_id_count, &get_device_name(&netgrasp_event), &netgrasp_event.ip_address, &netgrasp_event.mac_address);
+                            let device_name = get_device_name(&netgrasp_event);
+                            self.send_notification(netgrasp_event, NetgraspEventType::NetworkScan, &device_name);
                             detected_netscan = true;
                         }
                         Err(e) => {
@@ -901,15 +887,17 @@ impl NetgraspDb {
             else {
                 notification.add_value("mac".to_string(), "unknown".to_string());
             }
-            notification.add_value("name".to_string(), self.get_name(&netgrasp_event));
+            let device_name = get_device_name(&netgrasp_event);
+            notification.add_value("name".to_string(), device_name);
             notification.add_value("host_name".to_string(), netgrasp_event.host_name.clone());
             notification.add_value("vendor_name".to_string(), netgrasp_event.vendor_name.clone());
             notification.add_value("vendor_full_name".to_string(), netgrasp_event.vendor_full_name.clone());
             let wrapped_vendor: String;
+            let device_name = get_device_name(&netgrasp_event);
             if netgrasp_event.vendor_full_name == "unknown" {
                 wrapped_vendor = "".to_string();
             }
-            else if netgrasp_event.vendor_full_name == self.get_name(&netgrasp_event) {
+            else if netgrasp_event.vendor_full_name == device_name {
                 wrapped_vendor = "".to_string();
             }
             else {
