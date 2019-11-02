@@ -813,9 +813,9 @@ impl NetgraspDb {
             let recently_seen_query = arp
                 .select(recently_seen_count)
                 .filter(src_ip.eq(&netgrasp_event.ip_address))
-                .filter(created.ge(inactive_before))
-                .load(&self.sql);
-            let recently_seen: i64 = match recently_seen_query {
+                .filter(created.ge(inactive_before));
+            debug!("send_notification: recently_seen_query: {}", debug_query::<Sqlite, _>(&recently_seen_query).to_string());
+            let recently_seen: i64 = match recently_seen_query.load(&self.sql) {
                 Ok(r) => *r.first().unwrap(),
                 Err(_) => 0,
             };
@@ -835,10 +835,10 @@ impl NetgraspDb {
                 .select(created)
                 .filter(src_ip.eq(&netgrasp_event.ip_address))
                 .order(created.desc())
-                .limit(2)
-                .load(&self.sql);
+                .limit(2);
+            debug!("send_notification: previously_seen_query: {}", debug_query::<Sqlite, _>(&previously_seen_query).to_string());
             // convert i32 timestamp from SQLite into u64 for helpers
-            let previously_seen_string: String = match previously_seen_query {
+            let previously_seen_string: String = match previously_seen_query.load(&self.sql) {
                 Ok(l) => {
                     let timestamp_string: String = match l.last() {
                         Some(t) => {
@@ -857,10 +857,10 @@ impl NetgraspDb {
             let min_created = diesel::dsl::sql::<diesel::sql_types::Integer>("MIN(created)");
             let first_seen_query = arp
                 .select(min_created)
-                .filter(src_ip.eq(&netgrasp_event.ip_address))
-                .load(&self.sql);
+                .filter(src_ip.eq(&netgrasp_event.ip_address));
+            debug!("send_notification: first_seen_query: {}", debug_query::<Sqlite, _>(&first_seen_query).to_string());
             // convert i32 timestamp from SQLite into u64 for helpers
-            let first_seen: u64 = match first_seen_query {
+            let first_seen: u64 = match first_seen_query.load(&self.sql) {
                 Ok(l) => {
                     let timestamp: i32 = *l.first().unwrap();
                     timestamp.try_into().expect("failed to convert i32 to u64")
