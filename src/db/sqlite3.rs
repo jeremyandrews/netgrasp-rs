@@ -65,7 +65,6 @@ pub struct NetworkScan {
     pub src_ip_id: i32,
 }
 
-
 #[derive(Debug, Clone)]
 enum NetgraspEventType {
     Undeclared,
@@ -803,6 +802,7 @@ impl NetgraspDb {
         use std::convert::TryInto;
 
         let event_detail = netgrasp_event_detail(netgrasp_event_type);
+        debug!("send_notification: priority: {}, name: {}, description: {}, netgrasp_event: {:?}", &event_detail.priority, &event_detail.name, &event_detail.description, &netgrasp_event);
 
         // @TODO: Expose this to configuration:
         if event_detail.priority > 140 {
