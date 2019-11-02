@@ -31,7 +31,7 @@ pub fn device_name(device: DeviceName) -> String {
         device.host_name.to_string()
     }
     else {
-        device.vendor_full_name.to_string()
+        format!("{} ({})", device.vendor_full_name.to_string(), device.ip_address)
     }
 }
 

@@ -432,8 +432,6 @@ impl NetgraspDb {
             // If the vendor exists, return vendor_id.
             Ok(v) => {
                 netgrasp_event.vendor_id = v.vendor_id;
-                netgrasp_event.vendor_name = v.name.to_string();
-                netgrasp_event.vendor_full_name = v.full_name.to_string();
                 netgrasp_event = self.send_notification(netgrasp_event, NetgraspEventType::VendorSeen, &v.full_name);
                 netgrasp_event
             }
