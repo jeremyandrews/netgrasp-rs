@@ -59,6 +59,12 @@ table! {
     }
 }
 
+joinable!(arp -> ip (src_ip_id));
+joinable!(arp -> mac (src_mac_id));
+joinable!(arp -> vendor (src_vendor_id));
+joinable!(ip -> mac (mac_id));
+joinable!(mac -> vendor (vendor_id));
+
 allow_tables_to_appear_in_same_query!(
     arp,
     ip,

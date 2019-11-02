@@ -21,7 +21,10 @@ CREATE TABLE IF NOT EXISTS arp (
 	event_type TEXT NOT NULL,
 	event_description TEXT NOT NULL,
 	created INTEGER NOT NULL,
-	updated INTEGER NOT NULL
+	updated INTEGER NOT NULL,
+	FOREIGN KEY(src_mac_id) REFERENCES mac(mac_id),
+	FOREIGN KEY(src_ip_id) REFERENCES ip(ip_id),
+	FOREIGN KEY(src_vendor_id) REFERENCES vendor(vendor_id)
 );
 CREATE INDEX IF NOT EXISTS idxarp_int_src_tgt_op ON arp (interface, src_mac_id, src_ip_id, tgt_ip_id, operation);
 
@@ -47,7 +50,8 @@ CREATE TABLE IF NOT EXISTS ip (
 	host_name TEXT NOT NULL,
 	custom_name TEXT NOT NULL,
 	created INTEGER NOT NULL,
-	updated INTEGER NOT NULL
+	updated INTEGER NOT NULL,
+	FOREIGN KEY(mac_id) REFERENCES mac(mac_id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idxip_address_macid ON ip (address, mac_id);
 
@@ -57,7 +61,8 @@ CREATE TABLE IF NOT EXISTS mac (
 	address TEXT NOT NULL,
 	is_self INTEGER NOT NULL,
 	created INTEGER NOT NULL,
-	updated INTEGER NOT NULL
+	updated INTEGER NOT NULL,
+	FOREIGN KEY(vendor_id) REFERENCES vendor(vendor_id)
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idxmac_address ON mac (address);
 

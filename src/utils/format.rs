@@ -7,7 +7,10 @@ pub fn display_active_devices(active_devices: Vec<NetgraspActiveDevice>) {
     println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
     for device in active_devices.iter() {
         let name: String;
-        if !device.host_name.is_empty() && device.host_name != device.ip_address {
+        if device.custom_name != "" {
+            name = device.custom_name.to_string();
+        }
+        else if device.host_name != "" && device.host_name != device.ip_address {
             name = device.host_name.to_string();
         }
         else {

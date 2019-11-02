@@ -46,6 +46,7 @@ pub struct NetgraspActiveDevice {
     pub host_name: String,
     pub vendor_name: String,
     pub vendor_full_name: String,
+    pub custom_name: String,
     pub recently_seen_count: i64,
     pub recently_seen_first: i32,
     pub recently_seen_last: i32,
@@ -289,12 +290,14 @@ impl NetgraspDb {
     // Returns a vector of all currently known active devices.
     pub fn get_active_devices(&self) -> Vec<NetgraspActiveDevice> {
         use crate::db::schema::arp::dsl::*;
+        use crate::db::schema::ip;
 
-        let min_updated = diesel::dsl::sql::<diesel::sql_types::Integer>("MIN(updated)");
-        let max_updated = diesel::dsl::sql::<diesel::sql_types::Integer>("MAX(updated)");
+        let min_updated = diesel::dsl::sql::<diesel::sql_types::Integer>("MIN(arp.updated)");
+        let max_updated = diesel::dsl::sql::<diesel::sql_types::Integer>("MAX(arp.updated)");
         let count_src_ip = diesel::dsl::sql::<diesel::sql_types::BigInt>("COUNT(src_ip)");
         let active_devices_query = arp
-            .select((interface, src_ip, src_mac, host_name, vendor_name, vendor_full_name, &count_src_ip, min_updated, &max_updated))
+            .inner_join(ip::table)
+            .select((interface, src_ip, src_mac, host_name, vendor_name, vendor_full_name, ip::custom_name, &count_src_ip, min_updated, &max_updated))
             .filter(src_ip.ne("0.0.0.0"))
             .filter(is_active.eq(1))
             .group_by(src_ip)
