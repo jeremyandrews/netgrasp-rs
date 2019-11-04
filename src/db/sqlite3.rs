@@ -498,7 +498,7 @@ impl NetgraspDb {
                 // @TODO: Review these, perhaps perform a remote API call as a backup?
                 netgrasp_event.vendor_name = "unknown".to_string();
                 netgrasp_event.vendor_full_name = "unknown".to_string();
-                info!("vendor lookup of mac_address({}) failed", &mac_address);
+                debug!("vendor lookup of mac_address({}) failed", &mac_address);
             }
 
         }
