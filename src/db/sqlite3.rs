@@ -15,6 +15,9 @@ use smoltcp::wire::ArpOperation;
 // IPs are considered active for 3 hours
 pub const IPS_ACTIVE_FOR: u64 = 10800;
 
+// Limit the number of devices to list when listing devices talked to
+pub const TALKED_TO_LIMIT: i64 = 50;
+
 pub struct NetgraspDb {
     sql: SqliteConnection,
     oui: OuiDatabase,
@@ -50,6 +53,12 @@ pub struct NetgraspActiveDevice {
     pub recently_seen_count: i64,
     pub recently_seen_first: i32,
     pub recently_seen_last: i32,
+}
+
+#[derive(Debug, Default, PartialEq, Queryable)]
+pub struct TalkedTo {
+    pub ip_address: String,
+    pub mac_address: String,
 }
 
 #[derive(Debug, Queryable, QueryableByName)]
@@ -870,6 +879,37 @@ impl NetgraspDb {
                 Err(_) => time::timestamp_now(),
             };
 
+            // Build list of devices that have been pinged.
+            let current_device = TalkedTo {
+                ip_address: netgrasp_event.ip_address.to_string(),
+                mac_address: netgrasp_event.mac_address.to_string(),
+            };
+            let devices_talked_to_query = arp
+                .select((tgt_ip, tgt_mac))
+                .filter(src_ip.eq(&netgrasp_event.ip_address))
+                .filter(created.ge(time::elapsed(86400) as i32))
+                .group_by(tgt_ip)
+                .limit(TALKED_TO_LIMIT);
+            debug!("send_notification: devices_talked_to_query: {}", debug_query::<Sqlite, _>(&devices_talked_to_query).to_string());
+            let devices_talked_to: Vec<TalkedTo> = match devices_talked_to_query.get_results(&self.sql) {
+                Ok(mut talked_to) => {
+                    // The current ARP packet isn't in the database, be sure the device is included
+                    if !talked_to.contains(&current_device) {
+                        talked_to.push(current_device);
+                    }
+                    talked_to
+                }
+                Err(_) => vec!(current_device),
+            };
+            let devices_talked_to_count = devices_talked_to.len();
+            let device_string: String;
+            if devices_talked_to_count == 1 {
+                device_string = "device".to_string();
+            }
+            else {
+                device_string = "devices".to_string();
+            }
+
             let mut notification = Notification::init("Netgrasp", "", &event_detail.description);
             notification.add_value("event".to_string(), event_detail.name);
             notification.add_value("device".to_string(), device.to_string());
@@ -907,6 +947,8 @@ impl NetgraspDb {
             notification.add_value("first_seen".to_string(), format::time_ago(first_seen, true));
             notification.add_value("previously_seen".to_string(), previously_seen_string);
             notification.add_value("recently_seen".to_string(), recently_seen_string);
+            notification.add_value("devices_talked_to_count".to_string(), devices_talked_to_count.to_string());
+            notification.add_value("device_string".to_string(), device_string);
             notification.set_title_template(templates::NETGRASP_TITLE_TEMPLATE.to_string());
             notification.set_short_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
             notification.set_short_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
