@@ -3,6 +3,7 @@ use diesel::sql_types::{Text, Integer};
 use diesel::{sql_query, debug_query};
 use diesel_migrations::{run_pending_migrations, RunMigrationsError};
 use diesel::sqlite::Sqlite;
+use diesel::dsl::count;
 use dns_lookup::{lookup_addr};
 use eui48::MacAddress;
 use oui::OuiDatabase;
@@ -891,17 +892,34 @@ impl NetgraspDb {
                 .group_by(tgt_ip)
                 .limit(TALKED_TO_LIMIT);
             debug!("send_notification: devices_talked_to_query: {}", debug_query::<Sqlite, _>(&devices_talked_to_query).to_string());
-            let devices_talked_to: Vec<TalkedTo> = match devices_talked_to_query.get_results(&self.sql) {
+            let mut self_included: i64 = 1;
+            let devices_talked_to: Vec<TalkedTo> = match devices_talked_to_query.load(&self.sql) {
                 Ok(mut talked_to) => {
                     // The current ARP packet isn't in the database, be sure the device is included
                     if !talked_to.contains(&current_device) {
                         talked_to.push(current_device);
+                        self_included = 0;
                     }
                     talked_to
+                },
+                Err(_) => {
+                    self_included = 0;
+                    vec!(current_device)
                 }
-                Err(_) => vec!(current_device),
             };
-            let devices_talked_to_count = devices_talked_to.len();
+            let devices_talked_to_count_query = arp
+                .select(count(tgt_ip))
+                .filter(src_ip.eq(&netgrasp_event.ip_address))
+                .filter(created.ge(time::elapsed(86400) as i32))
+                .group_by(tgt_ip);
+            debug!("send_notification: devices_talked_to_count_query: {}", debug_query::<Sqlite, _>(&devices_talked_to_count_query).to_string());
+            let devices_talked_to_count = match devices_talked_to_count_query.first(&self.sql) {
+                Ok(c) => {
+                    let counter: i64 = c;
+                    counter + self_included
+                }
+                Err(_) => 1,
+            };
             let device_string: String;
             if devices_talked_to_count == 1 {
                 device_string = "device".to_string();
