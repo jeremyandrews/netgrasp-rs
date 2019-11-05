@@ -3,7 +3,6 @@ use diesel::sql_types::{Text, Integer};
 use diesel::{sql_query, debug_query};
 use diesel_migrations::{run_pending_migrations, RunMigrationsError};
 use diesel::sqlite::Sqlite;
-use diesel::dsl::count;
 use dns_lookup::{lookup_addr};
 use eui48::MacAddress;
 use oui::OuiDatabase;
@@ -66,6 +65,13 @@ pub struct TalkedTo {
 pub struct DistinctIpId {
     #[sql_type = "Integer"]
     pub src_ip_id: i32,
+}
+
+
+#[derive(Debug, Queryable, QueryableByName)]
+pub struct TalkedToCount {
+    #[sql_type = "Integer"]
+    pub counter: i32,
 }
 
 #[derive(Debug, Default, Queryable, QueryableByName)]
@@ -892,7 +898,7 @@ impl NetgraspDb {
                 .group_by(tgt_ip)
                 .limit(TALKED_TO_LIMIT);
             debug!("send_notification: devices_talked_to_query: {}", debug_query::<Sqlite, _>(&devices_talked_to_query).to_string());
-            let mut self_included: i64 = 1;
+            let mut self_included: i32 = 1;
             let devices_talked_to: Vec<TalkedTo> = match devices_talked_to_query.load(&self.sql) {
                 Ok(mut talked_to) => {
                     // The current ARP packet isn't in the database, be sure the device is included
@@ -907,21 +913,26 @@ impl NetgraspDb {
                     vec!(current_device)
                 }
             };
-            let devices_talked_to_count_query = arp
-                .select(count(tgt_ip))
-                .filter(src_ip.eq(&netgrasp_event.ip_address))
-                .filter(created.ge(time::elapsed(86400) as i32))
-                .group_by(tgt_ip);
+            let devices_talked_to_count_query = sql_query("SELECT COUNT(DISTINCT tgt_ip_id) AS counter FROM arp WHERE src_ip_id = ? AND created > ?")
+                .bind::<Integer, _>(netgrasp_event.ip_id as i32)
+                .bind::<Integer, _>(time::elapsed(86400) as i32);
             debug!("send_notification: devices_talked_to_count_query: {}", debug_query::<Sqlite, _>(&devices_talked_to_count_query).to_string());
-            let devices_talked_to_count = match devices_talked_to_count_query.first(&self.sql) {
+            let devices_talked_to_count = match devices_talked_to_count_query.get_result(&self.sql) {
                 Ok(c) => {
-                    let counter: i64 = c;
-                    counter + self_included
+                    let talked_to_count: TalkedToCount = c;
+                    TalkedToCount {
+                        counter: talked_to_count.counter + self_included,
+                    }
                 }
-                Err(_) => 1,
+                Err(e) => {
+                    debug!("devices_talked_to_count_query error: {}", e);
+                    TalkedToCount {
+                        counter: 1,
+                    }
+                }
             };
             let device_string: String;
-            if devices_talked_to_count == 1 {
+            if devices_talked_to_count.counter == 1 {
                 device_string = "device".to_string();
             }
             else {
@@ -965,7 +976,7 @@ impl NetgraspDb {
             notification.add_value("first_seen".to_string(), format::time_ago(first_seen, true));
             notification.add_value("previously_seen".to_string(), previously_seen_string);
             notification.add_value("recently_seen".to_string(), recently_seen_string);
-            notification.add_value("devices_talked_to_count".to_string(), devices_talked_to_count.to_string());
+            notification.add_value("devices_talked_to_count".to_string(), devices_talked_to_count.counter.to_string());
             notification.add_value("device_string".to_string(), device_string);
             notification.set_title_template(templates::NETGRASP_TITLE_TEMPLATE.to_string());
             notification.set_short_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
