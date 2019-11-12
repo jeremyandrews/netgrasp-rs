@@ -13,18 +13,18 @@ extern crate diesel;
 #[macro_use]
 extern crate serde_derive;
 
-use clap::{Arg, App};
+use clap::{App, Arg};
 use simplelog::*;
-use std::fs::File;
-use std::thread;
-use std::sync::mpsc;
-use std::path::PathBuf;
 use std::fs;
+use std::fs::File;
+use std::path::PathBuf;
+use std::sync::mpsc;
+use std::thread;
 mod db {
-    pub mod schema;
     pub mod models;
-    pub mod sqlite3;
     pub mod oui;
+    pub mod schema;
+    pub mod sqlite3;
 }
 mod net {
     pub mod arp;
@@ -43,7 +43,7 @@ const DEFAULT_NETSCAN_RANGE: u64 = 30;
 const DEFAULT_PROCESS_INACTIVE_IPS: u64 = 30;
 const DEFAULT_PROCESS_NETSCANS: u64 = 30;
 
-const DEFAULT_MINIMUM_PRIORITY: &str  = "140";
+const DEFAULT_MINIMUM_PRIORITY: &str = "140";
 
 // List all interfaces.
 fn list_interfaces() -> Vec<String> {
@@ -69,45 +69,59 @@ fn main() {
         .version("0.10.0")
         .author("Jeremy Andrews <jeremy@tag1consulting.com>")
         .about("A passive network observation tool")
-        .arg(Arg::with_name("interface")
-            .short("i")
-            .long("interface")
-            .value_name("INTERFACE")
-            .help("Specify the network interface to listen on")
-            .possible_values(&values)
-            .required(true)
-            .takes_value(true))
-        .arg(Arg::with_name("logfile")
-            .short("l")
-            .long("logfile")
-            .value_name("LOG FILE")
-            .help("Path of logfile")
-            .takes_value(true))
-        .arg(Arg::with_name("dbfile")
-            .short("d")
-            .long("dbfile")
-            .value_name("DATABASE FILE")
-            .help("Path of database file")
-            .takes_value(true))
-        .arg(Arg::with_name("priority")
-            .short("p")
-            .long("priority")
-            .value_name("PRIORITY")
-            .help("Notify of events of this priority or more")
-            .default_value(DEFAULT_MINIMUM_PRIORITY)
-            .takes_value(true))
-        .arg(Arg::with_name("update")
-            .short("u")
-            .long("update")
-            .help("Update MAC addresses vendor db"))
-        .arg(Arg::with_name("g")
-            .short("g")
-            .multiple(true)
-            .help("Sets the logged level of verbosity"))
-        .arg(Arg::with_name("v")
-            .short("v")
-            .multiple(true)
-            .help("Sets the output level of verbosity"))
+        .arg(
+            Arg::with_name("interface")
+                .short("i")
+                .long("interface")
+                .value_name("INTERFACE")
+                .help("Specify the network interface to listen on")
+                .possible_values(&values)
+                .required(true)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("logfile")
+                .short("l")
+                .long("logfile")
+                .value_name("LOG FILE")
+                .help("Path of logfile")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("dbfile")
+                .short("d")
+                .long("dbfile")
+                .value_name("DATABASE FILE")
+                .help("Path of database file")
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("priority")
+                .short("p")
+                .long("priority")
+                .value_name("PRIORITY")
+                .help("Notify of events of this priority or more")
+                .default_value(DEFAULT_MINIMUM_PRIORITY)
+                .takes_value(true),
+        )
+        .arg(
+            Arg::with_name("update")
+                .short("u")
+                .long("update")
+                .help("Update MAC addresses vendor db"),
+        )
+        .arg(
+            Arg::with_name("g")
+                .short("g")
+                .multiple(true)
+                .help("Sets the logged level of verbosity"),
+        )
+        .arg(
+            Arg::with_name("v")
+                .short("v")
+                .multiple(true)
+                .help("Sets the output level of verbosity"),
+        )
         .get_matches();
 
     // Allow optionally controlling debug output level
@@ -140,13 +154,16 @@ fn main() {
         }
     }
     fs::create_dir_all(&log_file.parent().unwrap()).expect("Failed to create log file.");
-    
-    CombinedLogger::init(
-        vec![
-            TermLogger::new(debug_level, Config::default(), TerminalMode::Mixed).unwrap(),
-            WriteLogger::new(log_level, Config::default(), File::create(&log_file).unwrap()),
-        ]
-    ).unwrap();
+
+    CombinedLogger::init(vec![
+        TermLogger::new(debug_level, Config::default(), TerminalMode::Mixed).unwrap(),
+        WriteLogger::new(
+            log_level,
+            Config::default(),
+            File::create(&log_file).unwrap(),
+        ),
+    ])
+    .unwrap();
     info!("Output verbosity level: {}", debug_level);
     info!("Logfile verbosity level: {}", log_level);
     info!("Writing to log file: {}", log_file.display());
@@ -156,7 +173,10 @@ fn main() {
     debug!("Configuration path: {}", configuration_directory.display());
 
     let min_priority = value_t_or_exit!(matches.value_of("priority"), u8);
-    info!("Notifying of events with a priority of {} or more.", min_priority);
+    info!(
+        "Notifying of events with a priority of {} or more.",
+        min_priority
+    );
 
     // Force update of OUI database for MAC vendor lookups.
     if matches.is_present("update") {
@@ -174,12 +194,15 @@ fn main() {
     thread::spawn(move || {
         net::arp::listen(iface, arp_tx);
     });
-    
+
     let oui_db_path = db::oui::get_path();
     debug!("Loading oui database from path: {:?}", &oui_db_path);
     if !oui_db_path.exists() {
         // Netgrasp will auto-install Wireshark's manuf file for vendor lookups.
-        info!("Required oui database (for vendor-lookups) not found: {:?}", &oui_db_path);
+        info!(
+            "Required oui database (for vendor-lookups) not found: {:?}",
+            &oui_db_path
+        );
         db::oui::download_file(oui_db_path.to_str().unwrap());
     }
     let path_to_oui_db: &str = oui_db_path.to_str().unwrap();
@@ -198,7 +221,11 @@ fn main() {
     }
     fs::create_dir_all(&db_file.parent().unwrap()).expect("Failed to create database file.");
     let path_to_db: &str = db_file.to_str().unwrap();
-    let netgrasp_db = db::sqlite3::NetgraspDb::new(path_to_db.to_string(), path_to_oui_db.to_string(), min_priority);
+    let netgrasp_db = db::sqlite3::NetgraspDb::new(
+        path_to_db.to_string(),
+        path_to_oui_db.to_string(),
+        min_priority,
+    );
     info!("Using SQLite3 database file: {}", path_to_db);
     let response = netgrasp_db.migrate();
     match response {
@@ -238,7 +265,10 @@ fn main() {
                     // don't keep re-detecting the same scan. We slowly increase the range by
                     // 1 minute each minute until we get back to the DEFAULT_NETSCAN_RANGE.
                     netscan_range = 1;
-                    info!("netscan detected, decreasing netscan range to {}", netscan_range);
+                    info!(
+                        "netscan detected, decreasing netscan range to {}",
+                        netscan_range
+                    );
                 }
                 false => {
                     // This assumes process_network_scan_every is 60 seconds, otherwise this

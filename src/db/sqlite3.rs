@@ -1,16 +1,16 @@
+use crate::db::models::*;
+use crate::notifications::templates;
+use crate::utils::{format, time};
 use diesel::prelude::*;
-use diesel::sql_types::{Text, Integer};
-use diesel::{sql_query, debug_query};
-use diesel_migrations::{run_pending_migrations, RunMigrationsError};
+use diesel::sql_types::{Integer, Text};
 use diesel::sqlite::Sqlite;
+use diesel::{debug_query, sql_query};
+use diesel_migrations::{run_pending_migrations, RunMigrationsError};
 use dns_lookup::lookup_addr;
 use eui48::MacAddress;
-use oui::OuiDatabase;
-use crate::db::models::*;
-use crate::utils::{time, format};
-use crate::notifications::templates;
-use rqpush::Notification;
 use handlebars::to_json;
+use oui::OuiDatabase;
+use rqpush::Notification;
 
 #[derive(Debug)]
 pub enum NetgraspEventWrapperType {
@@ -47,7 +47,7 @@ pub struct NetgraspEventWrapper {
 impl NetgraspEventWrapper {
     pub fn initialize(mtype: NetgraspEventWrapperType) -> Self {
         NetgraspEventWrapper {
-            events: vec!(),
+            events: vec![],
             mtype: mtype,
             network_event: NewNetworkEvent::default(),
             interface: Interface::default(),
@@ -109,7 +109,6 @@ pub struct DistinctIpId {
     #[sql_type = "Integer"]
     pub ip_id: i32,
 }
-
 
 #[derive(Debug, Queryable, QueryableByName)]
 pub struct TalkedToCount {
@@ -293,8 +292,7 @@ fn get_device_name(netgrasp_event_wrapper: &NetgraspEventWrapper, is_source: boo
             ip_address: netgrasp_event_wrapper.source.ip.address.to_string(),
             vendor_full_name: netgrasp_event_wrapper.source.vendor.full_name.to_string(),
         })
-    }
-    else {
+    } else {
         format::device_name(format::DeviceName {
             custom_name: netgrasp_event_wrapper.target.ip.custom_name.to_string(),
             host_name: netgrasp_event_wrapper.target.ip.host_name.to_string(),
@@ -306,9 +304,8 @@ fn get_device_name(netgrasp_event_wrapper: &NetgraspEventWrapper, is_source: boo
 
 fn name_or_unknown(name: &str) -> String {
     if name == "" {
-        return "(unknown)".to_string()
-    }
-    else {
+        return "(unknown)".to_string();
+    } else {
         name.to_string()
     }
 }
@@ -323,7 +320,10 @@ impl NetgraspDb {
     }
 
     fn establish_sqlite_connection(sqlite_database_path: &str) -> SqliteConnection {
-        info!("establishing connection to SQLite database: [{}]", sqlite_database_path);
+        info!(
+            "establishing connection to SQLite database: [{}]",
+            sqlite_database_path
+        );
         let sql_connection = match SqliteConnection::establish(sqlite_database_path) {
             Ok(c) => c,
             Err(e) => {
@@ -335,7 +335,10 @@ impl NetgraspDb {
     }
 
     fn establish_oui_connection(oui_database_path: &str) -> OuiDatabase {
-        info!("establishing connection to OUI database: [{}]", oui_database_path);
+        info!(
+            "establishing connection to OUI database: [{}]",
+            oui_database_path
+        );
         let oui_connection = match OuiDatabase::new_from_file(oui_database_path) {
             Ok(c) => c,
             Err(e) => {
@@ -357,26 +360,33 @@ impl NetgraspDb {
 
         trace!("record_network_event: packet({:?})", &packet);
         // @TODO use a generic
-        let mut netgrasp_event_wrapper = NetgraspEventWrapper::initialize(NetgraspEventWrapperType::Arp);
+        let mut netgrasp_event_wrapper =
+            NetgraspEventWrapper::initialize(NetgraspEventWrapperType::Arp);
 
         netgrasp_event_wrapper = self.process_arp_packet(netgrasp_event_wrapper, packet);
 
         netgrasp_event_wrapper.network_event.recent = 1;
         netgrasp_event_wrapper.network_event.processed = 0;
-        netgrasp_event_wrapper.network_event.interface_id = netgrasp_event_wrapper.interface.interface_id;
+        netgrasp_event_wrapper.network_event.interface_id =
+            netgrasp_event_wrapper.interface.interface_id;
         netgrasp_event_wrapper.network_event.mac_id = netgrasp_event_wrapper.source.mac.mac_id;
-        netgrasp_event_wrapper.network_event.vendor_id = netgrasp_event_wrapper.source.vendor.vendor_id;
+        netgrasp_event_wrapper.network_event.vendor_id =
+            netgrasp_event_wrapper.source.vendor.vendor_id;
         netgrasp_event_wrapper.network_event.ip_id = netgrasp_event_wrapper.source.ip.ip_id;
         netgrasp_event_wrapper.network_event.tgt_mac_id = netgrasp_event_wrapper.target.mac.mac_id;
-        netgrasp_event_wrapper.network_event.tgt_vendor_id = netgrasp_event_wrapper.target.vendor.vendor_id;
+        netgrasp_event_wrapper.network_event.tgt_vendor_id =
+            netgrasp_event_wrapper.target.vendor.vendor_id;
         netgrasp_event_wrapper.network_event.tgt_ip_id = netgrasp_event_wrapper.target.ip.ip_id;
         netgrasp_event_wrapper.network_event.created = netgrasp_event_wrapper.timestamp;
         netgrasp_event_wrapper.network_event.updated = netgrasp_event_wrapper.timestamp;
         debug!("netgrasp_event_wrapper: {:?}", netgrasp_event_wrapper);
 
-        let network_event_insert_query = diesel::insert_into(network_event::table)
-            .values(&netgrasp_event_wrapper.network_event);
-        debug!("record_network_event: network_event_insert_query {}", debug_query::<Sqlite, _>(&network_event_insert_query).to_string());
+        let network_event_insert_query =
+            diesel::insert_into(network_event::table).values(&netgrasp_event_wrapper.network_event);
+        debug!(
+            "record_network_event: network_event_insert_query {}",
+            debug_query::<Sqlite, _>(&network_event_insert_query).to_string()
+        );
         network_event_insert_query
             .execute(&self.sql)
             .expect("Error recording network event");
@@ -387,40 +397,78 @@ impl NetgraspDb {
         }
     }
 
-    fn process_arp_packet(&self, mut netgrasp_event_wrapper: NetgraspEventWrapper, arp_packet: crate::net::arp::NetgraspArpPacket) -> NetgraspEventWrapper {
+    fn process_arp_packet(
+        &self,
+        mut netgrasp_event_wrapper: NetgraspEventWrapper,
+        arp_packet: crate::net::arp::NetgraspArpPacket,
+    ) -> NetgraspEventWrapper {
         trace!("process_arp_packet({:?})", arp_packet);
 
         // Load the interface_id
-        netgrasp_event_wrapper = self.process_interface(netgrasp_event_wrapper, &arp_packet.interface, &arp_packet.interface_ip);
+        netgrasp_event_wrapper = self.process_interface(
+            netgrasp_event_wrapper,
+            &arp_packet.interface,
+            &arp_packet.interface_ip,
+        );
 
-        debug!("processing source ip({}) mac({})", arp_packet.src_ip, arp_packet.src_mac);
+        debug!(
+            "processing source ip({}) mac({})",
+            arp_packet.src_ip, arp_packet.src_mac
+        );
         // Process the arp source MAC
-        if arp_packet.src_mac.to_string() != "00-00-00-00-00-00" &&
-            arp_packet.src_mac.to_string() != "ff-ff-ff-ff-ff-ff" {
-            netgrasp_event_wrapper = self.process_mac(netgrasp_event_wrapper, &arp_packet.src_mac.to_string(), arp_packet.src_is_self as i32, true);
+        if arp_packet.src_mac.to_string() != "00-00-00-00-00-00"
+            && arp_packet.src_mac.to_string() != "ff-ff-ff-ff-ff-ff"
+        {
+            netgrasp_event_wrapper = self.process_mac(
+                netgrasp_event_wrapper,
+                &arp_packet.src_mac.to_string(),
+                arp_packet.src_is_self as i32,
+                true,
+            );
         }
         // Process the arp source IP
-        if arp_packet.src_ip.to_string() != "0.0.0.0" &&
-            arp_packet.src_ip.to_string() != "255.255.255.255" {
-            netgrasp_event_wrapper = self.process_ip(netgrasp_event_wrapper, &arp_packet.src_ip.to_string(), true);
+        if arp_packet.src_ip.to_string() != "0.0.0.0"
+            && arp_packet.src_ip.to_string() != "255.255.255.255"
+        {
+            netgrasp_event_wrapper =
+                self.process_ip(netgrasp_event_wrapper, &arp_packet.src_ip.to_string(), true);
         }
 
-        debug!("processing target ip({}) mac({})", arp_packet.tgt_ip, arp_packet.tgt_mac);
+        debug!(
+            "processing target ip({}) mac({})",
+            arp_packet.tgt_ip, arp_packet.tgt_mac
+        );
         // Process the arp target MAC
-        if arp_packet.tgt_mac.to_string() != "00-00-00-00-00-00" &&
-            arp_packet.tgt_mac.to_string() != "ff-ff-ff-ff-ff-ff" {
-            netgrasp_event_wrapper = self.process_mac(netgrasp_event_wrapper, &arp_packet.tgt_mac.to_string(), arp_packet.tgt_is_self as i32, false);
+        if arp_packet.tgt_mac.to_string() != "00-00-00-00-00-00"
+            && arp_packet.tgt_mac.to_string() != "ff-ff-ff-ff-ff-ff"
+        {
+            netgrasp_event_wrapper = self.process_mac(
+                netgrasp_event_wrapper,
+                &arp_packet.tgt_mac.to_string(),
+                arp_packet.tgt_is_self as i32,
+                false,
+            );
         }
         // Process the arp target IP
-        if arp_packet.tgt_ip.to_string() != "0.0.0.0" &&
-            arp_packet.tgt_ip.to_string() != "255.255.255.255" {
-            netgrasp_event_wrapper = self.process_ip(netgrasp_event_wrapper, &arp_packet.tgt_ip.to_string(), false);
+        if arp_packet.tgt_ip.to_string() != "0.0.0.0"
+            && arp_packet.tgt_ip.to_string() != "255.255.255.255"
+        {
+            netgrasp_event_wrapper = self.process_ip(
+                netgrasp_event_wrapper,
+                &arp_packet.tgt_ip.to_string(),
+                false,
+            );
         }
 
         netgrasp_event_wrapper
     }
 
-    fn process_interface(&self, mut netgrasp_event_wrapper: NetgraspEventWrapper, interface: &str, interface_ip: &str) -> NetgraspEventWrapper {
+    fn process_interface(
+        &self,
+        mut netgrasp_event_wrapper: NetgraspEventWrapper,
+        interface: &str,
+        interface_ip: &str,
+    ) -> NetgraspEventWrapper {
         trace!("process_interface: {} ({})", interface, interface_ip);
         use crate::db::schema::interface;
 
@@ -429,18 +477,25 @@ impl NetgraspDb {
         let interface_query = interface::table
             .filter(interface::label.eq(interface))
             .filter(interface::address.eq(interface_ip));
-        debug!("process_interface: {}", debug_query::<Sqlite, _>(&interface_query).to_string());
+        debug!(
+            "process_interface: {}",
+            debug_query::<Sqlite, _>(&interface_query).to_string()
+        );
         match interface_query.get_result::<Interface>(&self.sql) {
             // Return interface if exists
             Ok(i) => {
-                netgrasp_event_wrapper.events.push(NetgraspEventType::InterfaceSeen);
+                netgrasp_event_wrapper
+                    .events
+                    .push(NetgraspEventType::InterfaceSeen);
                 netgrasp_event_wrapper.interface = i;
                 netgrasp_event_wrapper
             }
             // Otherwise this is the first time we've seen activity on this interface.
             Err(_) => {
                 info!("new interface({})", &interface);
-                netgrasp_event_wrapper.events.push(NetgraspEventType::InterfaceFirstSeen);
+                netgrasp_event_wrapper
+                    .events
+                    .push(NetgraspEventType::InterfaceFirstSeen);
 
                 let new_interface = NewInterface {
                     label: interface.to_string(),
@@ -449,48 +504,65 @@ impl NetgraspDb {
                     created: netgrasp_event_wrapper.timestamp,
                     updated: netgrasp_event_wrapper.timestamp,
                 };
-                let interface_insert_query = diesel::insert_into(interface::table)
-                    .values(&new_interface);
-                debug!("process_interface: interface_insert_query {}", debug_query::<Sqlite, _>(&interface_insert_query).to_string());
+                let interface_insert_query =
+                    diesel::insert_into(interface::table).values(&new_interface);
+                debug!(
+                    "process_interface: interface_insert_query {}",
+                    debug_query::<Sqlite, _>(&interface_insert_query).to_string()
+                );
                 interface_insert_query
                     .execute(&self.sql)
                     .expect("Error adding interface");
 
                 // Recursively determine the interface_id we just added.
-                netgrasp_event_wrapper = self.process_interface(netgrasp_event_wrapper, interface, interface_ip);
+                netgrasp_event_wrapper =
+                    self.process_interface(netgrasp_event_wrapper, interface, interface_ip);
                 netgrasp_event_wrapper
             }
         }
     }
 
-    fn vendor_id_helper(&self, netgrasp_event_wrapper: &NetgraspEventWrapper, is_source: bool) -> i32 {
+    fn vendor_id_helper(
+        &self,
+        netgrasp_event_wrapper: &NetgraspEventWrapper,
+        is_source: bool,
+    ) -> i32 {
         if is_source {
             netgrasp_event_wrapper.source.vendor.vendor_id
-        }
-        else {
+        } else {
             netgrasp_event_wrapper.target.vendor.vendor_id
         }
     }
 
     // Populate mac details in event wrapper, adding if new
-    fn process_mac(&self, mut netgrasp_event_wrapper: NetgraspEventWrapper, mac_address: &str, is_self: i32, is_source: bool) -> NetgraspEventWrapper {
+    fn process_mac(
+        &self,
+        mut netgrasp_event_wrapper: NetgraspEventWrapper,
+        mac_address: &str,
+        is_self: i32,
+        is_source: bool,
+    ) -> NetgraspEventWrapper {
         trace!("process_mac: {}", mac_address);
         use crate::db::schema::mac;
 
         // Load vendor first so we can populate vendor_id
-        netgrasp_event_wrapper = self.process_vendor(netgrasp_event_wrapper, mac_address, is_source);
+        netgrasp_event_wrapper =
+            self.process_vendor(netgrasp_event_wrapper, mac_address, is_source);
 
-        let mac_query = mac::table
-            .filter(mac::address.eq(mac_address));
-        debug!("load_mac_id: {}", debug_query::<Sqlite, _>(&mac_query).to_string());
+        let mac_query = mac::table.filter(mac::address.eq(mac_address));
+        debug!(
+            "load_mac_id: {}",
+            debug_query::<Sqlite, _>(&mac_query).to_string()
+        );
         match mac_query.get_result::<Mac>(&self.sql) {
             // Return mac if exists
             Ok(m) => {
-                netgrasp_event_wrapper.events.push(NetgraspEventType::MacSeen);
+                netgrasp_event_wrapper
+                    .events
+                    .push(NetgraspEventType::MacSeen);
                 if is_source {
                     netgrasp_event_wrapper.source.mac = m;
-                }
-                else {
+                } else {
                     netgrasp_event_wrapper.target.mac = m;
                 }
                 netgrasp_event_wrapper
@@ -499,7 +571,9 @@ impl NetgraspDb {
             Err(_) => {
                 // If this mac address doesn't exist, add it.
                 info!("new mac_address({})", mac_address);
-                netgrasp_event_wrapper.events.push(NetgraspEventType::MacFirstSeen);
+                netgrasp_event_wrapper
+                    .events
+                    .push(NetgraspEventType::MacFirstSeen);
 
                 // Load vendor details, necessary to set the correct vendor_id
                 let new_mac = NewMac {
@@ -509,21 +583,29 @@ impl NetgraspDb {
                     created: netgrasp_event_wrapper.timestamp,
                     updated: netgrasp_event_wrapper.timestamp,
                 };
-                let mac_insert_query = diesel::insert_into(mac::table)
-                    .values(&new_mac);
-                debug!("process_mac: insert {}", debug_query::<Sqlite, _>(&mac_insert_query).to_string());
+                let mac_insert_query = diesel::insert_into(mac::table).values(&new_mac);
+                debug!(
+                    "process_mac: insert {}",
+                    debug_query::<Sqlite, _>(&mac_insert_query).to_string()
+                );
                 mac_insert_query
                     .execute(&self.sql)
                     .expect("Error adding mac");
 
                 // Recursively determine the mac_id we just added.
-                netgrasp_event_wrapper = self.process_mac(netgrasp_event_wrapper, mac_address, is_self, is_source);
+                netgrasp_event_wrapper =
+                    self.process_mac(netgrasp_event_wrapper, mac_address, is_self, is_source);
                 netgrasp_event_wrapper
             }
         }
     }
 
-    fn process_vendor(&self, mut netgrasp_event_wrapper: NetgraspEventWrapper, mac_address: &str, is_source: bool) -> NetgraspEventWrapper {
+    fn process_vendor(
+        &self,
+        mut netgrasp_event_wrapper: NetgraspEventWrapper,
+        mac_address: &str,
+        is_source: bool,
+    ) -> NetgraspEventWrapper {
         trace!("process_vendor: {}", &mac_address);
         use crate::db::schema::vendor;
 
@@ -554,15 +636,19 @@ impl NetgraspDb {
         let vendor_query = vendor::table
             .filter(vendor::name.eq(&vendor_name))
             .filter(vendor::full_name.eq(&vendor_full_name));
-        debug!("load_vendor_id: {}", debug_query::<Sqlite, _>(&vendor_query).to_string());
+        debug!(
+            "load_vendor_id: {}",
+            debug_query::<Sqlite, _>(&vendor_query).to_string()
+        );
         match vendor_query.get_result::<Vendor>(&self.sql) {
             // If the vendor exists, return vendor_id.
             Ok(v) => {
-                netgrasp_event_wrapper.events.push(NetgraspEventType::VendorSeen);
+                netgrasp_event_wrapper
+                    .events
+                    .push(NetgraspEventType::VendorSeen);
                 if is_source {
                     netgrasp_event_wrapper.source.vendor = v;
-                }
-                else {
+                } else {
                     netgrasp_event_wrapper.target.vendor = v;
                 }
                 netgrasp_event_wrapper
@@ -571,7 +657,9 @@ impl NetgraspDb {
             Err(_) => {
                 info!("new vendor({} [{}])", &vendor_full_name, &vendor_name);
 
-                netgrasp_event_wrapper.events.push(NetgraspEventType::VendorFirstSeen);
+                netgrasp_event_wrapper
+                    .events
+                    .push(NetgraspEventType::VendorFirstSeen);
 
                 let new_vendor = NewVendor {
                     name: vendor_name,
@@ -579,9 +667,11 @@ impl NetgraspDb {
                     created: netgrasp_event_wrapper.timestamp,
                     updated: netgrasp_event_wrapper.timestamp,
                 };
-                let insert_vendor_query = diesel::insert_into(vendor::table)
-                    .values(&new_vendor);
-                debug!("load_vendor_id: insert new vendor: {}", debug_query::<Sqlite, _>(&insert_vendor_query).to_string());
+                let insert_vendor_query = diesel::insert_into(vendor::table).values(&new_vendor);
+                debug!(
+                    "load_vendor_id: insert new vendor: {}",
+                    debug_query::<Sqlite, _>(&insert_vendor_query).to_string()
+                );
                 match insert_vendor_query.execute(&self.sql) {
                     Ok(_) => (),
                     Err(e) => {
@@ -591,23 +681,28 @@ impl NetgraspDb {
                     }
                 }
 
-                netgrasp_event_wrapper = self.process_vendor(netgrasp_event_wrapper, mac_address, is_source);
+                netgrasp_event_wrapper =
+                    self.process_vendor(netgrasp_event_wrapper, mac_address, is_source);
                 netgrasp_event_wrapper
             }
         }
     }
 
-    fn process_ip(&self, mut netgrasp_event_wrapper: NetgraspEventWrapper, ip_address: &str, is_source: bool) -> NetgraspEventWrapper {
+    fn process_ip(
+        &self,
+        mut netgrasp_event_wrapper: NetgraspEventWrapper,
+        ip_address: &str,
+        is_source: bool,
+    ) -> NetgraspEventWrapper {
         use crate::db::schema::ip::dsl::*;
-        use crate::db::schema::network_event::dsl::{created, network_event, ip_id};
+        use crate::db::schema::network_event::dsl::{created, ip_id, network_event};
 
         let wrapper_mac_id;
         let wrapper_mac;
         if is_source {
             wrapper_mac_id = netgrasp_event_wrapper.source.mac.mac_id;
             wrapper_mac = netgrasp_event_wrapper.source.mac.address.clone();
-        }
-        else {
+        } else {
             wrapper_mac_id = netgrasp_event_wrapper.target.mac.mac_id;
             wrapper_mac = netgrasp_event_wrapper.target.mac.address.clone();
         }
@@ -617,25 +712,31 @@ impl NetgraspDb {
         if wrapper_mac_id == 0 {
             if !is_source {
                 // Target has IP but no MAC, so this is a request to see who owns an IP
-                netgrasp_event_wrapper.events.push(NetgraspEventType::IpRequest);
+                netgrasp_event_wrapper
+                    .events
+                    .push(NetgraspEventType::IpRequest);
             }
-            let load_ip_id_query = ip 
-                .filter(address.eq(ip_address));
-            debug!("process_ip: load_ip_id_query get mac_id {}", debug_query::<Sqlite, _>(&load_ip_id_query).to_string());
-            loaded_ip_id = load_ip_id_query
-                .get_result::<Ip>(&self.sql);
-            // @TODO: if ip.address == ip.host_name, perhaps perform another reverse IP lookup.
-            // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
-            // simply respect the DNS ttl?
+            let load_ip_id_query = ip.filter(address.eq(ip_address));
+            debug!(
+                "process_ip: load_ip_id_query get mac_id {}",
+                debug_query::<Sqlite, _>(&load_ip_id_query).to_string()
+            );
+            loaded_ip_id = load_ip_id_query.get_result::<Ip>(&self.sql);
+        // @TODO: if ip.address == ip.host_name, perhaps perform another reverse IP lookup.
+        // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
+        // simply respect the DNS ttl?
         }
         // This packet includes a MAC, make sure we've already recorded it in the database
         else {
-            let load_ip_id_query = sql_query("SELECT * FROM ip WHERE address = ? AND (mac_id = ? OR mac_id = 0)")
-                .bind::<Text, _>(ip_address)
-                .bind::<Integer, _>(wrapper_mac_id);
-            debug!("process_ip: load_ip_id_query 2 {}", debug_query::<Sqlite, _>(&load_ip_id_query).to_string());
-            loaded_ip_id = load_ip_id_query
-                .get_result::<Ip>(&self.sql);
+            let load_ip_id_query =
+                sql_query("SELECT * FROM ip WHERE address = ? AND (mac_id = ? OR mac_id = 0)")
+                    .bind::<Text, _>(ip_address)
+                    .bind::<Integer, _>(wrapper_mac_id);
+            debug!(
+                "process_ip: load_ip_id_query 2 {}",
+                debug_query::<Sqlite, _>(&load_ip_id_query).to_string()
+            );
+            loaded_ip_id = load_ip_id_query.get_result::<Ip>(&self.sql);
         }
 
         // Process result to determine if we're seeing the mac or ip for the first time
@@ -645,22 +746,31 @@ impl NetgraspDb {
                 if wrapper_mac_id != 0 {
                     // We've seen the mac before, but this is the first time seeing the ip and mac together
                     if i.mac_id == 0 {
-                        netgrasp_event_wrapper.events.push(NetgraspEventType::IpFirstSeen);
-                        netgrasp_event_wrapper.events.push(NetgraspEventType::DeviceFirstSeen);
+                        netgrasp_event_wrapper
+                            .events
+                            .push(NetgraspEventType::IpFirstSeen);
+                        netgrasp_event_wrapper
+                            .events
+                            .push(NetgraspEventType::DeviceFirstSeen);
                         i.mac_id = wrapper_mac_id;
-                        let update_ip_set_mac_id_query = diesel::update(ip)
-                            .filter(address.eq(ip_address))
-                            .set((mac_id.eq(wrapper_mac_id), updated.eq(&netgrasp_event_wrapper.timestamp)));
-                            debug!("process_ip: update_ip_set_mac_id_query {}", debug_query::<Sqlite, _>(&update_ip_set_mac_id_query).to_string());
-                            match update_ip_set_mac_id_query.execute(&self.sql) {
-                                Err(e) => {
-                                    // Unexecpted error, exit to avoid an infinite loop.
-                                    // @TODO graceful error handling?
-                                    error!("Error updating ip table: [{}]", e);
-                                    std::process::exit(1);
-                                }
-                                Ok(_) => (),
+                        let update_ip_set_mac_id_query =
+                            diesel::update(ip).filter(address.eq(ip_address)).set((
+                                mac_id.eq(wrapper_mac_id),
+                                updated.eq(&netgrasp_event_wrapper.timestamp),
+                            ));
+                        debug!(
+                            "process_ip: update_ip_set_mac_id_query {}",
+                            debug_query::<Sqlite, _>(&update_ip_set_mac_id_query).to_string()
+                        );
+                        match update_ip_set_mac_id_query.execute(&self.sql) {
+                            Err(e) => {
+                                // Unexecpted error, exit to avoid an infinite loop.
+                                // @TODO graceful error handling?
+                                error!("Error updating ip table: [{}]", e);
+                                std::process::exit(1);
                             }
+                            Ok(_) => (),
+                        }
                     }
                     // We've seen this ip and mac together before, check if we've seen it recently
                     else {
@@ -669,42 +779,57 @@ impl NetgraspDb {
                             .filter(ip_id.eq(&i.ip_id))
                             .order(created.desc())
                             .limit(2);
-                            debug!("process_ip: previously_seen_query {}", debug_query::<Sqlite, _>(&previously_seen_query).to_string());
+                        debug!(
+                            "process_ip: previously_seen_query {}",
+                            debug_query::<Sqlite, _>(&previously_seen_query).to_string()
+                        );
                         let now = time::timestamp_now();
                         let inactive_before: i32 = (now - IPS_ACTIVE_FOR) as i32;
-                        let previously_seen: i32 = match previously_seen_query.get_result(&self.sql) {
+                        let previously_seen: i32 = match previously_seen_query.get_result(&self.sql)
+                        {
                             Ok(p) => p,
                             Err(_) => now as i32,
                         };
                         if previously_seen < inactive_before {
-                            netgrasp_event_wrapper.events.push(NetgraspEventType::IpReturned);
-                            netgrasp_event_wrapper.events.push(NetgraspEventType::DeviceReturned);
+                            netgrasp_event_wrapper
+                                .events
+                                .push(NetgraspEventType::IpReturned);
+                            netgrasp_event_wrapper
+                                .events
+                                .push(NetgraspEventType::DeviceReturned);
                         }
                     }
-                }
-                else {
+                } else {
                     if is_source {
-                        netgrasp_event_wrapper.events.push(NetgraspEventType::IpSeen);
-                        netgrasp_event_wrapper.events.push(NetgraspEventType::DeviceSeen);
+                        netgrasp_event_wrapper
+                            .events
+                            .push(NetgraspEventType::IpSeen);
+                        netgrasp_event_wrapper
+                            .events
+                            .push(NetgraspEventType::DeviceSeen);
                     }
                 }
 
                 // store the ip object in the event wrapper
                 if is_source {
                     netgrasp_event_wrapper.source.ip = i.clone();
-                }
-                else {
+                } else {
                     netgrasp_event_wrapper.target.ip = i.clone();
                 }
             }
             // ip does not exist in database, add it
             Err(_) => {
                 if wrapper_mac_id == 0 {
-                    netgrasp_event_wrapper.events.push(NetgraspEventType::IpFirstRequest);
-                }
-                else {
-                    netgrasp_event_wrapper.events.push(NetgraspEventType::IpFirstSeen);
-                    netgrasp_event_wrapper.events.push(NetgraspEventType::DeviceFirstSeen);
+                    netgrasp_event_wrapper
+                        .events
+                        .push(NetgraspEventType::IpFirstRequest);
+                } else {
+                    netgrasp_event_wrapper
+                        .events
+                        .push(NetgraspEventType::IpFirstSeen);
+                    netgrasp_event_wrapper
+                        .events
+                        .push(NetgraspEventType::DeviceFirstSeen);
                 }
 
                 let addr: std::net::IpAddr = match ip_address.parse() {
@@ -713,17 +838,23 @@ impl NetgraspDb {
                         error!("Error parsing ip_address {}: [{}]", &ip_address, e);
                         // @TODO: how should we handle this gracefully?
                         return netgrasp_event_wrapper;
-                    },
+                    }
                 };
                 let hostname: String = match lookup_addr(&addr) {
                     Ok(h) => h,
                     Err(e) => {
-                        warn!("Failed to look up host_name for ip_address {}: [{}]", &ip_address, e);
+                        warn!(
+                            "Failed to look up host_name for ip_address {}: [{}]",
+                            &ip_address, e
+                        );
                         "unknown".to_string()
-                    },
+                    }
                 };
 
-                info!("new ip({}) hostname({}) with mac({})", &ip_address, &hostname, &wrapper_mac);
+                info!(
+                    "new ip({}) hostname({}) with mac({})",
+                    &ip_address, &hostname, &wrapper_mac
+                );
                 let new_ip = NewIp {
                     mac_id: wrapper_mac_id,
                     address: ip_address.to_string(),
@@ -732,9 +863,11 @@ impl NetgraspDb {
                     created: netgrasp_event_wrapper.timestamp,
                     updated: netgrasp_event_wrapper.timestamp,
                 };
-                let insert_ip_query = diesel::insert_into(ip)
-                    .values(&new_ip);
-                debug!("load_ip_id: insert_ip_query {}", debug_query::<Sqlite, _>(&insert_ip_query).to_string());
+                let insert_ip_query = diesel::insert_into(ip).values(&new_ip);
+                debug!(
+                    "load_ip_id: insert_ip_query {}",
+                    debug_query::<Sqlite, _>(&insert_ip_query).to_string()
+                );
                 match insert_ip_query.execute(&self.sql) {
                     Ok(_) => (),
                     Err(e) => {
@@ -746,7 +879,8 @@ impl NetgraspDb {
                 }
 
                 // Recursively determine the ip_id of the IP address we just added.
-                netgrasp_event_wrapper = self.process_ip(netgrasp_event_wrapper, &ip_address, is_source);
+                netgrasp_event_wrapper =
+                    self.process_ip(netgrasp_event_wrapper, &ip_address, is_source);
             }
         }
 
@@ -755,12 +889,19 @@ impl NetgraspDb {
 
     /// Assumption: events are always the source, not the target?
     ///  false: "first requested" would be the tgt
-    fn process_event(&self, netgrasp_event_type: &NetgraspEventType, netgrasp_event_wrapper: &NetgraspEventWrapper) {
+    fn process_event(
+        &self,
+        netgrasp_event_type: &NetgraspEventType,
+        netgrasp_event_wrapper: &NetgraspEventWrapper,
+    ) {
         use crate::db::schema::network_event::dsl::*;
         use std::convert::TryInto;
 
         let event_detail = netgrasp_event_detail(netgrasp_event_type);
-        debug!("process_event: priority: {}, name: {}, description: {}", &event_detail.priority, &event_detail.name, &event_detail.description);
+        debug!(
+            "process_event: priority: {}, name: {}, description: {}",
+            &event_detail.priority, &event_detail.name, &event_detail.description
+        );
 
         if event_detail.priority >= self.minimum_priority {
             // Determine how many times the IP was seen recently.
@@ -772,7 +913,10 @@ impl NetgraspDb {
                 .select(recently_seen_count)
                 .filter(ip_id.eq(&netgrasp_event_wrapper.network_event.ip_id))
                 .filter(created.ge(inactive_before));
-            debug!("process_event: recently_seen_query: {}", debug_query::<Sqlite, _>(&recently_seen_query).to_string());
+            debug!(
+                "process_event: recently_seen_query: {}",
+                debug_query::<Sqlite, _>(&recently_seen_query).to_string()
+            );
             let recently_seen: i64 = match recently_seen_query.load(&self.sql) {
                 Ok(r) => *r.first().unwrap(),
                 Err(_) => 0,
@@ -783,14 +927,15 @@ impl NetgraspDb {
             let recently_seen_string: String;
             if recently_seen == 1 {
                 recently_seen_string = "1 time".to_string();
-            }
-            else if recently_seen == 0 {
+            } else if recently_seen == 0 {
                 recently_seen_string = "never".to_string();
-            }
-            else {
+            } else {
                 recently_seen_string = format!("{} times", recently_seen);
             }
-            debug!("process_event: recently_seen_string: {}", recently_seen_string);
+            debug!(
+                "process_event: recently_seen_string: {}",
+                recently_seen_string
+            );
 
             // Determine the last time the IP was seen recently.
             let previously_seen_query = network_event
@@ -798,7 +943,10 @@ impl NetgraspDb {
                 .filter(ip_id.eq(&netgrasp_event_wrapper.network_event.ip_id))
                 .order(created.desc())
                 .limit(2);
-            debug!("send_notification: previously_seen_query: {}", debug_query::<Sqlite, _>(&previously_seen_query).to_string());
+            debug!(
+                "send_notification: previously_seen_query: {}",
+                debug_query::<Sqlite, _>(&previously_seen_query).to_string()
+            );
             // @TODO: what if only 1 is returned?
             // convert i32 timestamp from SQLite into u64 for helpers
             let previously_seen_string: String = match previously_seen_query.load(&self.sql) {
@@ -806,23 +954,30 @@ impl NetgraspDb {
                     let timestamp_string: String = match l.last() {
                         Some(t) => {
                             let g: i32 = *t;
-                            let timestamp: u64 = g.try_into().expect("failed to convert i32 to u64");
+                            let timestamp: u64 =
+                                g.try_into().expect("failed to convert i32 to u64");
                             format::time_ago(timestamp, true)
-                        },
+                        }
                         None => "never".to_string(),
                     };
                     timestamp_string
-                },
+                }
                 Err(_) => "never".to_string(),
             };
-            debug!("process_event: previously_seen_string: {}", previously_seen_string);
+            debug!(
+                "process_event: previously_seen_string: {}",
+                previously_seen_string
+            );
 
             // Determine the first time the IP was seen.
             let min_created = diesel::dsl::sql::<diesel::sql_types::Integer>("MIN(created)");
             let first_seen_query = network_event
                 .select(min_created)
                 .filter(ip_id.eq(&netgrasp_event_wrapper.network_event.ip_id));
-            debug!("send_notification: first_seen_query: {}", debug_query::<Sqlite, _>(&first_seen_query).to_string());
+            debug!(
+                "send_notification: first_seen_query: {}",
+                debug_query::<Sqlite, _>(&first_seen_query).to_string()
+            );
             // convert i32 timestamp from SQLite into u64 for helpers
             let first_seen: u64 = match first_seen_query.load(&self.sql) {
                 Ok(l) => {
@@ -837,77 +992,120 @@ impl NetgraspDb {
             let devices_talked_to_count_query = sql_query("SELECT COUNT(DISTINCT tgt_ip_id) AS counter FROM network_event WHERE ip_id = ? AND created > ?")
                 .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
                 .bind::<Integer, _>(time::elapsed(86400) as i32);
-            debug!("send_notification: devices_talked_to_count_query: {}", debug_query::<Sqlite, _>(&devices_talked_to_count_query).to_string());
-            let devices_talked_to_count = match devices_talked_to_count_query.get_result(&self.sql) {
+            debug!(
+                "send_notification: devices_talked_to_count_query: {}",
+                debug_query::<Sqlite, _>(&devices_talked_to_count_query).to_string()
+            );
+            let devices_talked_to_count = match devices_talked_to_count_query.get_result(&self.sql)
+            {
                 Ok(c) => c,
                 Err(e) => {
                     debug!("devices_talked_to_count_query error: {}", e);
-                    TalkedToCount {
-                        counter: 1,
-                    }
+                    TalkedToCount { counter: 1 }
                 }
             };
-            debug!("process_event: devices_talked_to_count: {:?}", devices_talked_to_count);
+            debug!(
+                "process_event: devices_talked_to_count: {:?}",
+                devices_talked_to_count
+            );
 
             // @TODO: use handlebars to pluralize
             let devices_talked_to_string: String;
             if devices_talked_to_count.counter == 1 {
                 devices_talked_to_string = "device".to_string();
-            }
-            else {
+            } else {
                 devices_talked_to_string = "devices".to_string();
             }
-            debug!("process_event: devices_talked_to_string: {:?}", devices_talked_to_string);
+            debug!(
+                "process_event: devices_talked_to_string: {:?}",
+                devices_talked_to_string
+            );
 
             let devices_talked_to_query = sql_query("SELECT ip.address as ip_address, ip.custom_name, ip.host_name, vendor.full_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id LEFT JOIN mac ON ip.mac_id = mac.mac_id LEFT JOIN vendor ON mac.vendor_id = vendor.vendor_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND mac.mac_id > 0 AND vendor.vendor_id > 0 AND network_event.tgt_ip_id > 0 GROUP BY tgt_ip_id ORDER BY count DESC")
                 .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
                 .bind::<Integer, _>(time::elapsed(86400) as i32);
-                //.limit(TALKED_TO_LIMIT);
-            debug!("send_notification: devices_talked_to_query: {}", debug_query::<Sqlite, _>(&devices_talked_to_query).to_string());
+            //.limit(TALKED_TO_LIMIT);
+            debug!(
+                "send_notification: devices_talked_to_query: {}",
+                debug_query::<Sqlite, _>(&devices_talked_to_query).to_string()
+            );
             let devices_talked_to: Vec<TalkedTo> = match devices_talked_to_query.load(&self.sql) {
                 Ok(talked_to) => talked_to,
                 Err(e) => {
                     warn!("send_notification; devices_talked_to_query error: {}", e);
-                    vec!(TalkedTo {
-                            ip_address: netgrasp_event_wrapper.source.ip.address.to_string(),
-                            custom_name: netgrasp_event_wrapper.source.ip.custom_name.to_string(),
-                            host_name: netgrasp_event_wrapper.source.ip.host_name.to_string(),
-                            full_name: netgrasp_event_wrapper.source.vendor.full_name.to_string(),
-                            count: 1,
-                        })
+                    vec![TalkedTo {
+                        ip_address: netgrasp_event_wrapper.source.ip.address.to_string(),
+                        custom_name: netgrasp_event_wrapper.source.ip.custom_name.to_string(),
+                        host_name: netgrasp_event_wrapper.source.ip.host_name.to_string(),
+                        full_name: netgrasp_event_wrapper.source.vendor.full_name.to_string(),
+                        count: 1,
+                    }]
                 }
             };
             debug!("process_event: devices_talked_to: {:?}", devices_talked_to);
 
-            let mut talked_to_list: Vec<TalkedToDisplay> = vec!();
+            let mut talked_to_list: Vec<TalkedToDisplay> = vec![];
             for device in devices_talked_to {
                 talked_to_list.push(TalkedToDisplay {
                     name: format::device_name(format::DeviceName {
-                            custom_name: device.custom_name.to_string(),
-                            host_name: device.host_name.to_string(),
-                            ip_address: device.ip_address.to_string(),
-                            vendor_full_name: device.full_name.to_string()}),
-                    count: device.count});
+                        custom_name: device.custom_name.to_string(),
+                        host_name: device.host_name.to_string(),
+                        ip_address: device.ip_address.to_string(),
+                        vendor_full_name: device.full_name.to_string(),
+                    }),
+                    count: device.count,
+                });
             }
             debug!("process_event: talked_to_list: {:?}", talked_to_list);
 
             let mut notification = Notification::init("Netgrasp", "", &event_detail.description);
             notification.add_value("event".to_string(), event_detail.name);
-            notification.add_value("name".to_string(), get_device_name(&netgrasp_event_wrapper, true));
-            notification.add_value("ip".to_string(), name_or_unknown(&netgrasp_event_wrapper.source.ip.address));
-            notification.add_value("mac".to_string(), name_or_unknown(&netgrasp_event_wrapper.source.mac.address));
-            notification.add_value("host_name".to_string(), name_or_unknown(&netgrasp_event_wrapper.source.ip.host_name));
-            notification.add_value("vendor_name".to_string(), name_or_unknown(&netgrasp_event_wrapper.source.vendor.name));
-            notification.add_value("vendor_full_name".to_string(), name_or_unknown(&netgrasp_event_wrapper.source.vendor.full_name));
+            notification.add_value(
+                "name".to_string(),
+                get_device_name(&netgrasp_event_wrapper, true),
+            );
+            notification.add_value(
+                "ip".to_string(),
+                name_or_unknown(&netgrasp_event_wrapper.source.ip.address),
+            );
+            notification.add_value(
+                "mac".to_string(),
+                name_or_unknown(&netgrasp_event_wrapper.source.mac.address),
+            );
+            notification.add_value(
+                "host_name".to_string(),
+                name_or_unknown(&netgrasp_event_wrapper.source.ip.host_name),
+            );
+            notification.add_value(
+                "vendor_name".to_string(),
+                name_or_unknown(&netgrasp_event_wrapper.source.vendor.name),
+            );
+            notification.add_value(
+                "vendor_full_name".to_string(),
+                name_or_unknown(&netgrasp_event_wrapper.source.vendor.full_name),
+            );
             notification.add_value("detail".to_string(), event_detail.description);
-            notification.add_value("interface".to_string(), name_or_unknown(&netgrasp_event_wrapper.interface.label));
-            notification.add_value("interface_ip".to_string(), name_or_unknown(&netgrasp_event_wrapper.interface.address));
+            notification.add_value(
+                "interface".to_string(),
+                name_or_unknown(&netgrasp_event_wrapper.interface.label),
+            );
+            notification.add_value(
+                "interface_ip".to_string(),
+                name_or_unknown(&netgrasp_event_wrapper.interface.address),
+            );
             notification.add_value("first_seen".to_string(), format::time_ago(first_seen, true));
             notification.add_value("previously_seen".to_string(), previously_seen_string);
             notification.add_value("recently_seen".to_string(), recently_seen_string);
-            notification.add_value("devices_talked_to_count".to_string(), devices_talked_to_count.counter.to_string());
-            notification.add_value("devices_talked_to_string".to_string(), devices_talked_to_string.to_string());
-            notification.add_serde_json_value("devices_talked_to".to_string(), to_json(&talked_to_list));
+            notification.add_value(
+                "devices_talked_to_count".to_string(),
+                devices_talked_to_count.counter.to_string(),
+            );
+            notification.add_value(
+                "devices_talked_to_string".to_string(),
+                devices_talked_to_string.to_string(),
+            );
+            notification
+                .add_serde_json_value("devices_talked_to".to_string(), to_json(&talked_to_list));
             notification.set_title_template(templates::NETGRASP_TITLE_TEMPLATE.to_string());
             notification.set_short_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
             notification.set_short_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
@@ -923,78 +1121,105 @@ impl NetgraspDb {
 
     // Returns a vector of all currently known active devices.
     pub fn get_active_devices(&self) -> Vec<NetgraspActiveDevice> {
-        use crate::db::schema::network_event::dsl::*;
         use crate::db::schema::interface;
-        use crate::db::schema::mac;
-        use crate::db::schema::vendor;
         use crate::db::schema::ip;
+        use crate::db::schema::mac;
+        use crate::db::schema::network_event::dsl::*;
+        use crate::db::schema::vendor;
 
-        let min_updated = diesel::dsl::sql::<diesel::sql_types::Integer>("MIN(network_event.updated)");
-        let max_updated = diesel::dsl::sql::<diesel::sql_types::Integer>("MAX(network_event.updated)");
-        let count_src_ip = diesel::dsl::sql::<diesel::sql_types::BigInt>("COUNT(network_event.ip_id)");
+        let min_updated =
+            diesel::dsl::sql::<diesel::sql_types::Integer>("MIN(network_event.updated)");
+        let max_updated =
+            diesel::dsl::sql::<diesel::sql_types::Integer>("MAX(network_event.updated)");
+        let count_src_ip =
+            diesel::dsl::sql::<diesel::sql_types::BigInt>("COUNT(network_event.ip_id)");
         let active_devices_query = network_event
             .inner_join(interface::table)
             .inner_join(mac::table)
             .inner_join(vendor::table)
             .inner_join(ip::table)
             .select((
-                interface::label, 
-                ip::address, 
-                mac::address, 
-                ip::host_name, 
-                vendor::name, 
-                vendor::full_name, 
-                ip::custom_name, 
-                &count_src_ip, 
-                min_updated, 
-                &max_updated
+                interface::label,
+                ip::address,
+                mac::address,
+                ip::host_name,
+                vendor::name,
+                vendor::full_name,
+                ip::custom_name,
+                &count_src_ip,
+                min_updated,
+                &max_updated,
             ))
             .filter(ip_id.ne(0))
             .filter(recent.eq(1))
             .group_by(ip_id)
             .order((max_updated.clone().desc(), count_src_ip.clone().desc()));
-        debug!("get_active_devices: {}", debug_query::<Sqlite, _>(&active_devices_query).to_string());
-        let active_devices: Vec<(NetgraspActiveDevice)> = match active_devices_query.load(&self.sql) {
+        debug!(
+            "get_active_devices: {}",
+            debug_query::<Sqlite, _>(&active_devices_query).to_string()
+        );
+        let active_devices: Vec<(NetgraspActiveDevice)> = match active_devices_query.load(&self.sql)
+        {
             Ok(a) => a,
             Err(e) => {
                 error!("Error loading active devices: [{}]", e);
-                vec!(NetgraspActiveDevice::default())
+                vec![NetgraspActiveDevice::default()]
             }
         };
-        debug!("get_active_devices: {} active devices", active_devices.len());
+        debug!(
+            "get_active_devices: {} active devices",
+            active_devices.len()
+        );
         active_devices
     }
 
     /// Helper function that fully populates a network_event_wrapper which only contains
     /// a network_event object (ie, loaded from the database).
-    fn populate_network_event(&self, mut netgrasp_event_wrapper: NetgraspEventWrapper) -> NetgraspEventWrapper {
+    fn populate_network_event(
+        &self,
+        mut netgrasp_event_wrapper: NetgraspEventWrapper,
+    ) -> NetgraspEventWrapper {
         use crate::db::schema::interface;
+        use crate::db::schema::ip;
         use crate::db::schema::mac;
         use crate::db::schema::vendor;
-        use crate::db::schema::ip;
 
         netgrasp_event_wrapper.timestamp = netgrasp_event_wrapper.network_event.updated;
         if netgrasp_event_wrapper.network_event.interface_id != 0 {
-            let load_interface_query = interface::table
-                .filter(interface::interface_id.eq(netgrasp_event_wrapper.network_event.interface_id));
-            debug!("populate_network_event: load_interface_query {}", debug_query::<Sqlite, _>(&load_interface_query).to_string());
-            netgrasp_event_wrapper.interface = match load_interface_query.get_result::<Interface>(&self.sql) {
-                Ok(i) => i,
-                Err(e) => {
-                    error!("populate_network_event: unexpected error loading interface: {}", e);
-                    // this shouldn't happen, exit
-                    std::process::exit(1);
-                }
-            };
+            let load_interface_query = interface::table.filter(
+                interface::interface_id.eq(netgrasp_event_wrapper.network_event.interface_id),
+            );
+            debug!(
+                "populate_network_event: load_interface_query {}",
+                debug_query::<Sqlite, _>(&load_interface_query).to_string()
+            );
+            netgrasp_event_wrapper.interface =
+                match load_interface_query.get_result::<Interface>(&self.sql) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        error!(
+                            "populate_network_event: unexpected error loading interface: {}",
+                            e
+                        );
+                        // this shouldn't happen, exit
+                        std::process::exit(1);
+                    }
+                };
         }
         if netgrasp_event_wrapper.network_event.mac_id != 0 {
-            let load_mac_query = mac::table
-                .filter(mac::mac_id.eq(netgrasp_event_wrapper.network_event.mac_id));
-            debug!("populate_network_event: load_mac_query {}", debug_query::<Sqlite, _>(&load_mac_query).to_string());
+            let load_mac_query =
+                mac::table.filter(mac::mac_id.eq(netgrasp_event_wrapper.network_event.mac_id));
+            debug!(
+                "populate_network_event: load_mac_query {}",
+                debug_query::<Sqlite, _>(&load_mac_query).to_string()
+            );
             netgrasp_event_wrapper.source.mac = match load_mac_query.get_result::<Mac>(&self.sql) {
                 Ok(m) => m,
                 Err(e) => {
-                    error!("populate_network_event: unexpected error loading mac: {}", e);
+                    error!(
+                        "populate_network_event: unexpected error loading mac: {}",
+                        e
+                    );
                     // this shouldn't happen, exit
                     std::process::exit(1);
                 }
@@ -1003,20 +1228,30 @@ impl NetgraspDb {
         if netgrasp_event_wrapper.network_event.vendor_id != 0 {
             let load_vendor_query = vendor::table
                 .filter(vendor::vendor_id.eq(netgrasp_event_wrapper.network_event.vendor_id));
-            debug!("populate_network_event: load_vendor_query {}", debug_query::<Sqlite, _>(&load_vendor_query).to_string());
-            netgrasp_event_wrapper.source.vendor = match load_vendor_query.get_result::<Vendor>(&self.sql) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("populate_network_event: unexpected error loading vendor: {}", e);
-                    // this shouldn't happen, exit
-                    std::process::exit(1);
-                }
-            };
+            debug!(
+                "populate_network_event: load_vendor_query {}",
+                debug_query::<Sqlite, _>(&load_vendor_query).to_string()
+            );
+            netgrasp_event_wrapper.source.vendor =
+                match load_vendor_query.get_result::<Vendor>(&self.sql) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!(
+                            "populate_network_event: unexpected error loading vendor: {}",
+                            e
+                        );
+                        // this shouldn't happen, exit
+                        std::process::exit(1);
+                    }
+                };
         }
         if netgrasp_event_wrapper.network_event.ip_id != 0 {
-            let load_ip_query = ip::table
-                .filter(ip::ip_id.eq(netgrasp_event_wrapper.network_event.ip_id));
-            debug!("populate_network_event: load_ip_query {}", debug_query::<Sqlite, _>(&load_ip_query).to_string());
+            let load_ip_query =
+                ip::table.filter(ip::ip_id.eq(netgrasp_event_wrapper.network_event.ip_id));
+            debug!(
+                "populate_network_event: load_ip_query {}",
+                debug_query::<Sqlite, _>(&load_ip_query).to_string()
+            );
             netgrasp_event_wrapper.source.ip = match load_ip_query.get_result::<Ip>(&self.sql) {
                 Ok(i) => i,
                 Err(e) => {
@@ -1027,13 +1262,19 @@ impl NetgraspDb {
             };
         }
         if netgrasp_event_wrapper.network_event.tgt_mac_id != 0 {
-            let load_mac_query = mac::table
-                .filter(mac::mac_id.eq(netgrasp_event_wrapper.network_event.tgt_mac_id));
-            debug!("populate_network_event: load_mac_query {}", debug_query::<Sqlite, _>(&load_mac_query).to_string());
+            let load_mac_query =
+                mac::table.filter(mac::mac_id.eq(netgrasp_event_wrapper.network_event.tgt_mac_id));
+            debug!(
+                "populate_network_event: load_mac_query {}",
+                debug_query::<Sqlite, _>(&load_mac_query).to_string()
+            );
             netgrasp_event_wrapper.target.mac = match load_mac_query.get_result::<Mac>(&self.sql) {
                 Ok(m) => m,
                 Err(e) => {
-                    error!("populate_network_event: unexpected error loading target mac: {}", e);
+                    error!(
+                        "populate_network_event: unexpected error loading target mac: {}",
+                        e
+                    );
                     // this shouldn't happen, exit
                     std::process::exit(1);
                 }
@@ -1042,24 +1283,37 @@ impl NetgraspDb {
         if netgrasp_event_wrapper.network_event.tgt_vendor_id != 0 {
             let load_vendor_query = vendor::table
                 .filter(vendor::vendor_id.eq(netgrasp_event_wrapper.network_event.tgt_vendor_id));
-            debug!("populate_network_event: load_vendor_query {}", debug_query::<Sqlite, _>(&load_vendor_query).to_string());
-            netgrasp_event_wrapper.target.vendor = match load_vendor_query.get_result::<Vendor>(&self.sql) {
-                Ok(v) => v,
-                Err(e) => {
-                    error!("populate_network_event: unexpected error loading target vendor: {}", e);
-                    // this shouldn't happen, exit
-                    std::process::exit(1);
-                }
-            };
+            debug!(
+                "populate_network_event: load_vendor_query {}",
+                debug_query::<Sqlite, _>(&load_vendor_query).to_string()
+            );
+            netgrasp_event_wrapper.target.vendor =
+                match load_vendor_query.get_result::<Vendor>(&self.sql) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        error!(
+                            "populate_network_event: unexpected error loading target vendor: {}",
+                            e
+                        );
+                        // this shouldn't happen, exit
+                        std::process::exit(1);
+                    }
+                };
         }
         if netgrasp_event_wrapper.network_event.tgt_ip_id != 0 {
-            let load_ip_query = ip::table
-                .filter(ip::ip_id.eq(netgrasp_event_wrapper.network_event.tgt_ip_id));
-            debug!("populate_network_event: load_ip_query {}", debug_query::<Sqlite, _>(&load_ip_query).to_string());
+            let load_ip_query =
+                ip::table.filter(ip::ip_id.eq(netgrasp_event_wrapper.network_event.tgt_ip_id));
+            debug!(
+                "populate_network_event: load_ip_query {}",
+                debug_query::<Sqlite, _>(&load_ip_query).to_string()
+            );
             netgrasp_event_wrapper.target.ip = match load_ip_query.get_result::<Ip>(&self.sql) {
                 Ok(i) => i,
                 Err(e) => {
-                    error!("populate_network_event: unexpected error loading target ip: {}", e);
+                    error!(
+                        "populate_network_event: unexpected error loading target ip: {}",
+                        e
+                    );
                     // this shouldn't happen, exit
                     std::process::exit(1);
                 }
@@ -1078,7 +1332,10 @@ impl NetgraspDb {
         let update_network_event_query = diesel::update(network_event)
             .filter(created.le(inactive_before))
             .set((recent.eq(0), updated.eq(now as i32)));
-        debug!("process_inactive_ips: update_network_event_query: {}", debug_query::<Sqlite, _>(&update_network_event_query).to_string());
+        debug!(
+            "process_inactive_ips: update_network_event_query: {}",
+            debug_query::<Sqlite, _>(&update_network_event_query).to_string()
+        );
         match update_network_event_query.execute(&self.sql) {
             Err(e) => {
                 error!("unexpected error marking network_events inactive: {}", e);
@@ -1091,37 +1348,67 @@ impl NetgraspDb {
         // 2a) identify expired ip adresses
         let inactive_ip_ids_query = sql_query("SELECT ip_id FROM network_event WHERE ip_id != 0 GROUP BY ip_id HAVING MAX(created) < ?")
             .bind::<Integer, _>(inactive_before);
-        debug!("process_inactive_ips: inactive_ip_ids_query: {}", debug_query::<Sqlite, _>(&inactive_ip_ids_query).to_string());
-        let inactive_ip_ids: Vec<DistinctIpId> = match inactive_ip_ids_query.load::<DistinctIpId>(&self.sql) {
-            Ok(i) => i,
-            Err(e) => {
-                error!("process_inactive_ips: unexpected error loading inactive ip ids: {}", e);
-                // this shouldn't happen, exit
-                std::process::exit(1);
-            }
-        };
+        debug!(
+            "process_inactive_ips: inactive_ip_ids_query: {}",
+            debug_query::<Sqlite, _>(&inactive_ip_ids_query).to_string()
+        );
+        let inactive_ip_ids: Vec<DistinctIpId> =
+            match inactive_ip_ids_query.load::<DistinctIpId>(&self.sql) {
+                Ok(i) => i,
+                Err(e) => {
+                    error!(
+                        "process_inactive_ips: unexpected error loading inactive ip ids: {}",
+                        e
+                    );
+                    // this shouldn't happen, exit
+                    std::process::exit(1);
+                }
+            };
 
         // 2b) identify the ips that have gone inactive (no recent packets)
         for inactive_ip_id in inactive_ip_ids {
             let inactive_ip_query = network_event
-                .select((recent, processed, interface_id, mac_id, vendor_id, ip_id, tgt_mac_id, tgt_vendor_id, tgt_ip_id, created, updated))
+                .select((
+                    recent,
+                    processed,
+                    interface_id,
+                    mac_id,
+                    vendor_id,
+                    ip_id,
+                    tgt_mac_id,
+                    tgt_vendor_id,
+                    tgt_ip_id,
+                    created,
+                    updated,
+                ))
                 .filter(ip_id.eq(inactive_ip_id.ip_id))
                 .filter(processed.eq(0))
                 .filter(recent.eq(0))
                 .limit(1);
-            debug!("process_inactive_ips: inactive_ip_query: {}", debug_query::<Sqlite, _>(&inactive_ip_query).to_string());
+            debug!(
+                "process_inactive_ips: inactive_ip_query: {}",
+                debug_query::<Sqlite, _>(&inactive_ip_query).to_string()
+            );
             match inactive_ip_query.get_result(&self.sql) {
                 Ok(i) => {
-                    let mut netgrasp_event_wrapper: NetgraspEventWrapper = NetgraspEventWrapper::initialize(NetgraspEventWrapperType::Arp);
+                    let mut netgrasp_event_wrapper: NetgraspEventWrapper =
+                        NetgraspEventWrapper::initialize(NetgraspEventWrapperType::Arp);
                     netgrasp_event_wrapper.network_event = i;
                     netgrasp_event_wrapper = self.populate_network_event(netgrasp_event_wrapper);
-                    netgrasp_event_wrapper.events.push(NetgraspEventType::IpInactive);
-                    netgrasp_event_wrapper.events.push(NetgraspEventType::DeviceInactive);
+                    netgrasp_event_wrapper
+                        .events
+                        .push(NetgraspEventType::IpInactive);
+                    netgrasp_event_wrapper
+                        .events
+                        .push(NetgraspEventType::DeviceInactive);
                     self.process_event(&NetgraspEventType::IpInactive, &netgrasp_event_wrapper);
                     self.process_event(&NetgraspEventType::DeviceInactive, &netgrasp_event_wrapper);
                 }
                 Err(e) => {
-                    debug!("process_inactive_ips: failed to load inactive ip event details: {}", e);
+                    debug!(
+                        "process_inactive_ips: failed to load inactive ip event details: {}",
+                        e
+                    );
                 }
             }
         }
@@ -1135,7 +1422,7 @@ impl NetgraspDb {
         match response {
             Err(e) => eprintln!("unexpected error processing inactive ips: {}", e),
             Ok(_) => (),
-        } 
+        }
     }
 
     pub fn detect_netscan(&self, scan_range: u64) -> bool {
@@ -1146,7 +1433,10 @@ impl NetgraspDb {
             .bind::<Integer, _>(time::elapsed(scan_range) as i32)
             // @TODO: expose as configuration how many devices talked to constitutes a netscan
             .bind::<Integer, _>(50);
-        debug!("detect_netscan: load_netscan_query: {}", debug_query::<Sqlite, _>(&load_netscan_query).to_string());
+        debug!(
+            "detect_netscan: load_netscan_query: {}",
+            debug_query::<Sqlite, _>(&load_netscan_query).to_string()
+        );
         match load_netscan_query.get_results::<NetworkScan>(&self.sql) {
             Ok(netscans) => {
                 if netscans.len() > 0 {
@@ -1154,30 +1444,58 @@ impl NetgraspDb {
                 }
                 for netscan in netscans {
                     let netscan_event_query = network_event
-                        .select((recent, processed, interface_id, mac_id, vendor_id, ip_id, tgt_mac_id, tgt_vendor_id, tgt_ip_id, created, updated))
+                        .select((
+                            recent,
+                            processed,
+                            interface_id,
+                            mac_id,
+                            vendor_id,
+                            ip_id,
+                            tgt_mac_id,
+                            tgt_vendor_id,
+                            tgt_ip_id,
+                            created,
+                            updated,
+                        ))
                         .filter(ip_id.eq(netscan.ip_id))
                         .limit(1);
-                    debug!("detect_netscan: netscan_event_query: {}", debug_query::<Sqlite, _>(&netscan_event_query).to_string());
+                    debug!(
+                        "detect_netscan: netscan_event_query: {}",
+                        debug_query::<Sqlite, _>(&netscan_event_query).to_string()
+                    );
                     match netscan_event_query.get_result(&self.sql) {
                         Ok(i) => {
                             //info!("detect_netscan: netscan of {}+ devices by {} ({}) [{}]", netscan.tgt_ip_id_count, &get_device_name(&netgrasp_event), &netgrasp_event.ip_address, &netgrasp_event.mac_address);
-                            info!("detect_netscan: netscan of {}+ devices", netscan.tgt_ip_id_count);
-                            let mut netgrasp_event_wrapper: NetgraspEventWrapper = NetgraspEventWrapper::initialize(NetgraspEventWrapperType::Arp);
+                            info!(
+                                "detect_netscan: netscan of {}+ devices",
+                                netscan.tgt_ip_id_count
+                            );
+                            let mut netgrasp_event_wrapper: NetgraspEventWrapper =
+                                NetgraspEventWrapper::initialize(NetgraspEventWrapperType::Arp);
                             netgrasp_event_wrapper.network_event = i;
-                            netgrasp_event_wrapper = self.populate_network_event(netgrasp_event_wrapper);
-                            netgrasp_event_wrapper.events.push(NetgraspEventType::NetworkScan);
-                            self.process_event(&NetgraspEventType::NetworkScan, &netgrasp_event_wrapper);
+                            netgrasp_event_wrapper =
+                                self.populate_network_event(netgrasp_event_wrapper);
+                            netgrasp_event_wrapper
+                                .events
+                                .push(NetgraspEventType::NetworkScan);
+                            self.process_event(
+                                &NetgraspEventType::NetworkScan,
+                                &netgrasp_event_wrapper,
+                            );
                             detected_netscan = true;
                         }
                         Err(e) => {
-                            info!("detect_netscan: failed to load netscan event details: {}", e);
+                            info!(
+                                "detect_netscan: failed to load netscan event details: {}",
+                                e
+                            );
                         }
                     }
                 }
-            },
+            }
             Err(e) => {
                 debug!("detect_netscan: load_netscan_query: error: {}", e);
-                return detected_netscan
+                return detected_netscan;
             }
         }
         detected_netscan

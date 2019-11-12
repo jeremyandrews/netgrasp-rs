@@ -65,10 +65,4 @@ joinable!(network_event -> ip (ip_id));
 joinable!(network_event -> mac (mac_id));
 joinable!(network_event -> vendor (vendor_id));
 
-allow_tables_to_appear_in_same_query!(
-    interface,
-    ip,
-    mac,
-    network_event,
-    vendor,
-);
+allow_tables_to_appear_in_same_query!(interface, ip, mac, network_event, vendor,);

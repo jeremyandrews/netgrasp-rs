@@ -1,4 +1,4 @@
-use super::schema::{network_event, interface, mac, vendor, ip};
+use super::schema::{interface, ip, mac, network_event, vendor};
 
 #[derive(Debug, Default, Queryable, QueryableByName)]
 #[table_name = "network_event"]

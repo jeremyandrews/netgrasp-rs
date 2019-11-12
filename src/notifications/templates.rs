@@ -1,4 +1,3 @@
-
 pub const NETGRASP_TITLE_TEMPLATE: &str = "[netgrasp] {{event}}: {{name}}";
 
 pub const NETGRASP_TEXT_TEMPLATE: &str = "{{notification}}:

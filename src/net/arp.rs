@@ -1,9 +1,12 @@
-use std::os::unix::io::AsRawFd;
-use smoltcp::phy::{Device, RxToken, RawSocket};
 use smoltcp::phy::wait as phy_wait;
-use smoltcp::wire::{PrettyPrinter, EthernetFrame, EthernetProtocol, EthernetAddress, Ipv4Address, ArpPacket, ArpOperation};
+use smoltcp::phy::{Device, RawSocket, RxToken};
 use smoltcp::time::Instant;
-use std::sync::mpsc::{Sender};
+use smoltcp::wire::{
+    ArpOperation, ArpPacket, EthernetAddress, EthernetFrame, EthernetProtocol, Ipv4Address,
+    PrettyPrinter,
+};
+use std::os::unix::io::AsRawFd;
+use std::sync::mpsc::Sender;
 
 #[derive(Debug)]
 pub struct NetgraspArpPacket {
@@ -61,43 +64,56 @@ pub fn listen(iface: String, arp_tx: Sender<NetgraspArpPacket>) {
         };
         // Implemented as a Closure:
         //   https://doc.rust-lang.org/book/ch13-01-closures.html#refactoring-with-closures-to-store-code
-        rx_token.consume(Instant::now(), |buffer| {
-            // Be sure we have a valid ethernet frame.
-            match EthernetFrame::new_checked(&buffer) {
-                Ok(f) => {
-                    trace!("checking if packet is ARP");
-                    // We only care about ARP packets.
-                    if EthernetFrame::ethertype(&f) == EthernetProtocol::Arp {
-                        let packet = &ArpPacket::new_checked(f.payload()).unwrap();
-                        let interface_ip = get_interface_ip_address(iface.clone());
-                        let src_ip = Ipv4Address::from_bytes(packet.source_protocol_addr());
-                        let tgt_ip = Ipv4Address::from_bytes(packet.target_protocol_addr());
-                        let arp_packet = NetgraspArpPacket {
-                            interface: iface.clone(),
-                            interface_ip: interface_ip.clone(),
-                            src_mac: EthernetAddress::from_bytes(packet.source_hardware_addr()),
-                            src_ip: src_ip,
-                            src_is_self: src_ip.to_string() == interface_ip,
-                            src_is_broadcast: EthernetAddress::from_bytes(packet.source_hardware_addr()).is_broadcast(),
-                            tgt_mac: EthernetAddress::from_bytes(packet.target_hardware_addr()),
-                            tgt_ip: tgt_ip,
-                            tgt_is_self: tgt_ip.to_string() == interface_ip,
-                            tgt_is_broadcast: EthernetAddress::from_bytes(packet.target_hardware_addr()).is_broadcast(),
-                            operation: packet.operation(),
-                        };
-                        trace!("arp: {}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
-                        match arp_tx.send(arp_packet) {
-                            Ok(_) => (),
-                            Err(e) => error!("failed to send arp packet to main thread: {}", e)
+        rx_token
+            .consume(Instant::now(), |buffer| {
+                // Be sure we have a valid ethernet frame.
+                match EthernetFrame::new_checked(&buffer) {
+                    Ok(f) => {
+                        trace!("checking if packet is ARP");
+                        // We only care about ARP packets.
+                        if EthernetFrame::ethertype(&f) == EthernetProtocol::Arp {
+                            let packet = &ArpPacket::new_checked(f.payload()).unwrap();
+                            let interface_ip = get_interface_ip_address(iface.clone());
+                            let src_ip = Ipv4Address::from_bytes(packet.source_protocol_addr());
+                            let tgt_ip = Ipv4Address::from_bytes(packet.target_protocol_addr());
+                            let arp_packet = NetgraspArpPacket {
+                                interface: iface.clone(),
+                                interface_ip: interface_ip.clone(),
+                                src_mac: EthernetAddress::from_bytes(packet.source_hardware_addr()),
+                                src_ip: src_ip,
+                                src_is_self: src_ip.to_string() == interface_ip,
+                                src_is_broadcast: EthernetAddress::from_bytes(
+                                    packet.source_hardware_addr(),
+                                )
+                                .is_broadcast(),
+                                tgt_mac: EthernetAddress::from_bytes(packet.target_hardware_addr()),
+                                tgt_ip: tgt_ip,
+                                tgt_is_self: tgt_ip.to_string() == interface_ip,
+                                tgt_is_broadcast: EthernetAddress::from_bytes(
+                                    packet.target_hardware_addr(),
+                                )
+                                .is_broadcast(),
+                                operation: packet.operation(),
+                            };
+                            trace!(
+                                "arp: {}",
+                                PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer)
+                            );
+                            match arp_tx.send(arp_packet) {
+                                Ok(_) => (),
+                                Err(e) => error!("failed to send arp packet to main thread: {}", e),
+                            }
+                        } else {
+                            trace!(
+                                "not arp: {}",
+                                PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer)
+                            );
                         }
                     }
-                    else {
-                        trace!("not arp: {}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
-                    }
-                }
-                Err(e) => error!("Error reading ethernet frame on {}: {}", iface, e),
-            };
-            Ok(())
-        }).unwrap();
+                    Err(e) => error!("Error reading ethernet frame on {}: {}", iface, e),
+                };
+                Ok(())
+            })
+            .unwrap();
     }
 }
