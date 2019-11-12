@@ -2,6 +2,9 @@
 extern crate log;
 
 #[macro_use]
+extern crate clap;
+
+#[macro_use]
 extern crate lazy_static;
 
 #[macro_use]
@@ -39,6 +42,8 @@ mod notifications {
 const DEFAULT_NETSCAN_RANGE: u64 = 30;
 const DEFAULT_PROCESS_INACTIVE_IPS: u64 = 30;
 const DEFAULT_PROCESS_NETSCANS: u64 = 30;
+
+const DEFAULT_MINIMUM_PRIORITY: &str  = "140";
 
 // List all interfaces.
 fn list_interfaces() -> Vec<String> {
@@ -83,6 +88,13 @@ fn main() {
             .long("dbfile")
             .value_name("DATABASE FILE")
             .help("Path of database file")
+            .takes_value(true))
+        .arg(Arg::with_name("priority")
+            .short("p")
+            .long("priority")
+            .value_name("PRIORITY")
+            .help("Notify of events of this priority or more")
+            .default_value(DEFAULT_MINIMUM_PRIORITY)
             .takes_value(true))
         .arg(Arg::with_name("update")
             .short("u")
@@ -143,6 +155,9 @@ fn main() {
     let configuration_directory = utils::statics::PROJECT_DIRS.config_dir();
     debug!("Configuration path: {}", configuration_directory.display());
 
+    let min_priority = value_t_or_exit!(matches.value_of("priority"), u8);
+    info!("Notifying of events with a priority of {} or more.", min_priority);
+
     // Force update of OUI database for MAC vendor lookups.
     if matches.is_present("update") {
         let oui_db_path = db::oui::get_path();
@@ -183,7 +198,7 @@ fn main() {
     }
     fs::create_dir_all(&db_file.parent().unwrap()).expect("Failed to create database file.");
     let path_to_db: &str = db_file.to_str().unwrap();
-    let netgrasp_db = db::sqlite3::NetgraspDb::new(path_to_db.to_string(), path_to_oui_db.to_string());
+    let netgrasp_db = db::sqlite3::NetgraspDb::new(path_to_db.to_string(), path_to_oui_db.to_string(), min_priority);
     info!("Using SQLite3 database file: {}", path_to_db);
     let response = netgrasp_db.migrate();
     match response {

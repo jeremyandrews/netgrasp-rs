@@ -67,6 +67,7 @@ pub const TALKED_TO_LIMIT: i64 = 50;
 pub struct NetgraspDb {
     sql: SqliteConnection,
     oui: OuiDatabase,
+    minimum_priority: u8,
 }
 
 #[derive(Debug, Default, Queryable)]
@@ -219,11 +220,6 @@ fn netgrasp_event_detail(netgrasp_event_type: &NetgraspEventType) -> NetgraspEve
             description: "Requested mac address of a new IP on network".to_string(),
             priority: 110,
         },
-        NetgraspEventType::DeviceInactive => NetgraspEventDetail {
-            name: "device inactive".to_string(),
-            description: "Device on network has gone inactive".to_string(),
-            priority: 110,
-        },
         NetgraspEventType::InterfaceFirstSeen => NetgraspEventDetail {
             name: "new interface".to_string(),
             description: "New interface active".to_string(),
@@ -243,6 +239,11 @@ fn netgrasp_event_detail(netgrasp_event_type: &NetgraspEventType) -> NetgraspEve
             name: "IP returned".to_string(),
             description: "Inactive IP on network returned".to_string(),
             priority: 125,
+        },
+        NetgraspEventType::DeviceInactive => NetgraspEventDetail {
+            name: "device inactive".to_string(),
+            description: "Device on network has gone inactive".to_string(),
+            priority: 130,
         },
         /*
         NetgraspEventType::IpChanged => NetgraspEventDetail {
@@ -313,10 +314,11 @@ fn name_or_unknown(name: &str) -> String {
 }
 
 impl NetgraspDb {
-    pub fn new(sql_database_path: String, oui_database_path: String) -> Self {
+    pub fn new(sql_database_path: String, oui_database_path: String, minimum_priority: u8) -> Self {
         NetgraspDb {
             sql: NetgraspDb::establish_sqlite_connection(&sql_database_path),
             oui: NetgraspDb::establish_oui_connection(&oui_database_path),
+            minimum_priority: minimum_priority,
         }
     }
 
@@ -760,8 +762,7 @@ impl NetgraspDb {
         let event_detail = netgrasp_event_detail(netgrasp_event_type);
         debug!("process_event: priority: {}, name: {}, description: {}", &event_detail.priority, &event_detail.name, &event_detail.description);
 
-        // @TODO: Expose this to configuration:
-        if event_detail.priority > 140 {
+        if event_detail.priority >= self.minimum_priority {
             // Determine how many times the IP was seen recently.
             debug_assert!(netgrasp_event_wrapper.network_event.ip_id > 0);
             let now = time::timestamp_now();
