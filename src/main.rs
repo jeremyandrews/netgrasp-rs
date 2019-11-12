@@ -7,6 +7,9 @@ extern crate lazy_static;
 #[macro_use]
 extern crate diesel;
 
+#[macro_use]
+extern crate serde_derive;
+
 use clap::{Arg, App};
 use simplelog::*;
 use std::fs::File;
@@ -193,8 +196,9 @@ fn main() {
     let mut netscan_range = DEFAULT_NETSCAN_RANGE;
 
     loop {
+        trace!("top of main loop");
         match arp_rx.recv() {
-            Ok(r) => netgrasp_db.log_arp_packet(r),
+            Ok(r) => netgrasp_db.record_network_event(r),
             Err(e) => {
                 error!("fatal error, exiting: [{}]", e);
                 std::process::exit(1);

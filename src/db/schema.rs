@@ -1,26 +1,8 @@
 table! {
-    arp (arp_id) {
-        arp_id -> Integer,
-        src_mac_id -> Integer,
-        src_ip_id -> Integer,
-        src_vendor_id -> Integer,
-        tgt_ip_id -> Integer,
-        interface -> Text,
-        host_name -> Text,
-        custom_name -> Text,
-        vendor_name -> Text,
-        vendor_full_name -> Text,
-        src_mac -> Text,
-        src_ip -> Text,
-        tgt_mac -> Text,
-        tgt_ip -> Text,
-        operation -> Integer,
-        is_self -> Integer,
-        is_active -> Integer,
-        processed -> Integer,
-        matched -> Integer,
-        event_type -> Text,
-        event_description -> Text,
+    interface (interface_id) {
+        interface_id -> Integer,
+        label -> Text,
+        address -> Text,
         created -> Integer,
         updated -> Integer,
     }
@@ -41,9 +23,26 @@ table! {
 table! {
     mac (mac_id) {
         mac_id -> Integer,
+        is_self -> Integer,
         vendor_id -> Integer,
         address -> Text,
-        is_self -> Integer,
+        created -> Integer,
+        updated -> Integer,
+    }
+}
+
+table! {
+    network_event (netevent_id) {
+        netevent_id -> Integer,
+        recent -> Integer,
+        processed -> Integer,
+        interface_id -> Integer,
+        mac_id -> Integer,
+        vendor_id -> Integer,
+        ip_id -> Integer,
+        tgt_mac_id -> Integer,
+        tgt_vendor_id -> Integer,
+        tgt_ip_id -> Integer,
         created -> Integer,
         updated -> Integer,
     }
@@ -59,15 +58,17 @@ table! {
     }
 }
 
-joinable!(arp -> ip (src_ip_id));
-joinable!(arp -> mac (src_mac_id));
-joinable!(arp -> vendor (src_vendor_id));
 joinable!(ip -> mac (mac_id));
 joinable!(mac -> vendor (vendor_id));
+joinable!(network_event -> interface (interface_id));
+joinable!(network_event -> ip (ip_id));
+joinable!(network_event -> mac (mac_id));
+joinable!(network_event -> vendor (vendor_id));
 
 allow_tables_to_appear_in_same_query!(
-    arp,
+    interface,
     ip,
     mac,
+    network_event,
     vendor,
 );

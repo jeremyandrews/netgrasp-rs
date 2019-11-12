@@ -8,6 +8,7 @@ use std::sync::mpsc::{Sender};
 #[derive(Debug)]
 pub struct NetgraspArpPacket {
     pub interface: String,
+    pub interface_ip: String,
     pub src_mac: EthernetAddress,
     pub src_ip: Ipv4Address,
     pub src_is_self: bool,
@@ -26,6 +27,7 @@ fn get_interface_ip_address(interface: String) -> String {
             ip = iface.ip().to_string();
         }
     }
+    debug!("get_interface_ip_address: {}", &ip);
     ip
 }
 
@@ -41,6 +43,7 @@ pub fn listen(iface: String, arp_tx: Sender<NetgraspArpPacket>) {
     // Note: this requires superuser privileges, or corresponding capability bit.
     // Passes ifname as a reference.
     loop {
+        trace!("top of listen loop");
         // Logic for listening to ARP packets with smoltcp derived from tcpdump example:
         //   https://github.com/m-labs/smoltcp/blob/master/examples/tcpdump.rs
         // Wait forever for socket raw file descriptor to become readable.
@@ -62,6 +65,7 @@ pub fn listen(iface: String, arp_tx: Sender<NetgraspArpPacket>) {
             // Be sure we have a valid ethernet frame.
             match EthernetFrame::new_checked(&buffer) {
                 Ok(f) => {
+                    trace!("checking if packet is ARP");
                     // We only care about ARP packets.
                     if EthernetFrame::ethertype(&f) == EthernetProtocol::Arp {
                         let packet = &ArpPacket::new_checked(f.payload()).unwrap();
@@ -70,6 +74,7 @@ pub fn listen(iface: String, arp_tx: Sender<NetgraspArpPacket>) {
                         let tgt_ip = Ipv4Address::from_bytes(packet.target_protocol_addr());
                         let arp_packet = NetgraspArpPacket {
                             interface: iface.clone(),
+                            interface_ip: interface_ip.clone(),
                             src_mac: EthernetAddress::from_bytes(packet.source_hardware_addr()),
                             src_ip: src_ip,
                             src_is_self: src_ip.to_string() == interface_ip,
@@ -80,11 +85,14 @@ pub fn listen(iface: String, arp_tx: Sender<NetgraspArpPacket>) {
                             tgt_is_broadcast: EthernetAddress::from_bytes(packet.target_hardware_addr()).is_broadcast(),
                             operation: packet.operation(),
                         };
-                        trace!("{}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
+                        trace!("arp: {}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
                         match arp_tx.send(arp_packet) {
                             Ok(_) => (),
                             Err(e) => error!("failed to send arp packet to main thread: {}", e)
                         }
+                    }
+                    else {
+                        trace!("not arp: {}", PrettyPrinter::<EthernetFrame<&[u8]>>::new("", &buffer));
                     }
                 }
                 Err(e) => error!("Error reading ethernet frame on {}: {}", iface, e),
