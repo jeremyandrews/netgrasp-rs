@@ -66,7 +66,7 @@ fn main() {
 
     // Using clap to parse and validate command line arguments. https://docs.rs/clap/
     let matches = App::new("Netgrasp")
-        .version("0.10.0")
+        .version(crate_version!())
         .author("Jeremy Andrews <jeremy@tag1consulting.com>")
         .about("A passive network observation tool")
         .arg(
