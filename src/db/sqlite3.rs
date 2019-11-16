@@ -61,9 +61,6 @@ impl NetgraspEventWrapper {
 // IPs are considered active for 3 hours
 pub const IPS_ACTIVE_FOR: u64 = 10800;
 
-// Limit the number of devices to list when listing devices talked to
-pub const TALKED_TO_LIMIT: i32 = 100;
-
 pub struct NetgraspDb {
     sql: SqliteConnection,
     oui: OuiDatabase,
@@ -98,6 +95,16 @@ pub struct TalkedTo {
     pub count: i32,
 }
 
+#[derive(Debug, Default, PartialEq, Queryable, QueryableByName, Serialize)]
+pub struct TalkedAt {
+    #[sql_type = "Text"]
+    pub ip_address: String,
+    #[sql_type = "Text"]
+    pub host_name: String,
+    #[sql_type = "Integer"]
+    pub count: i32,
+}
+
 #[derive(Debug, Default, Serialize)]
 pub struct TalkedToDisplay {
     pub name: String,
@@ -109,12 +116,6 @@ pub struct TalkedToDisplay {
 pub struct DistinctIpId {
     #[sql_type = "Integer"]
     pub ip_id: i32,
-}
-
-#[derive(Debug, Queryable, QueryableByName)]
-pub struct TalkedToCount {
-    #[sql_type = "Integer"]
-    pub counter: i32,
 }
 
 #[derive(Debug, Default, Queryable, QueryableByName)]
@@ -988,42 +989,9 @@ impl NetgraspDb {
             };
             debug!("process_event: first_seen: {}", first_seen);
 
-            // Count how many devices this device has talked to in the last 24 hours
-            let devices_talked_to_count_query = sql_query("SELECT COUNT(DISTINCT tgt_ip_id) AS counter FROM network_event WHERE ip_id = ? AND created > ?")
+            let devices_talked_to_query = sql_query("SELECT ip.address as ip_address, ip.custom_name, ip.host_name, vendor.full_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id LEFT JOIN mac ON ip.mac_id = mac.mac_id LEFT JOIN vendor ON mac.vendor_id = vendor.vendor_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND mac.mac_id > 0 AND vendor.vendor_id > 0 AND network_event.tgt_ip_id > 0 GROUP BY tgt_ip_id ORDER BY count DESC")
                 .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
                 .bind::<Integer, _>(time::elapsed(86400) as i32);
-            debug!(
-                "send_notification: devices_talked_to_count_query: {}",
-                debug_query::<Sqlite, _>(&devices_talked_to_count_query).to_string()
-            );
-            let devices_talked_to_count = match devices_talked_to_count_query.get_result(&self.sql)
-            {
-                Ok(c) => c,
-                Err(e) => {
-                    debug!("devices_talked_to_count_query error: {}", e);
-                    TalkedToCount { counter: 1 }
-                }
-            };
-            debug!(
-                "process_event: devices_talked_to_count: {:?}",
-                devices_talked_to_count
-            );
-
-            let devices_talked_to_count_string: String;
-            if devices_talked_to_count.counter == 1 {
-                devices_talked_to_count_string = "1 device".to_string();
-            } else {
-                devices_talked_to_count_string = format!("{} devices", devices_talked_to_count.counter);
-            }
-            debug!(
-                "process_event: devices_talked_to_count_string: {:?}",
-                devices_talked_to_count_string
-            );
-
-            let devices_talked_to_query = sql_query("SELECT ip.address as ip_address, ip.custom_name, ip.host_name, vendor.full_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id LEFT JOIN mac ON ip.mac_id = mac.mac_id LEFT JOIN vendor ON mac.vendor_id = vendor.vendor_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND mac.mac_id > 0 AND vendor.vendor_id > 0 AND network_event.tgt_ip_id > 0 GROUP BY tgt_ip_id LIMIT ? ORDER BY count DESC")
-                .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
-                .bind::<Integer, _>(time::elapsed(86400) as i32)
-                .bind::<Integer, _>(TALKED_TO_LIMIT);
             debug!(
                 "send_notification: devices_talked_to_query: {}",
                 debug_query::<Sqlite, _>(&devices_talked_to_query).to_string()
@@ -1042,35 +1010,98 @@ impl NetgraspDb {
                 }
             };
             debug!("process_event: devices_talked_to: {:?}", devices_talked_to);
-
+            let devices_talked_to_count = devices_talked_to.len();
+            let devices_talked_to_count_string: String;
+            if devices_talked_to_count == 1 {
+                devices_talked_to_count_string = "1 device".to_string();
+            } else {
+                devices_talked_to_count_string = format!("{} devices", devices_talked_to_count);
+            }
+            debug!(
+                "process_event: devices_talked_to_count_string: {:?}",
+                devices_talked_to_count_string
+            );
             let mut talked_to_list: Vec<TalkedToDisplay> = vec![];
             for device in devices_talked_to {
-                if device.count == 1 {
-                    talked_to_list.push(TalkedToDisplay {
-                        name: format::device_name(format::DeviceName {
+                let talked_to = format::device_name(format::DeviceName {
                             custom_name: device.custom_name.to_string(),
                             host_name: device.host_name.to_string(),
                             ip_address: device.ip_address.to_string(),
                             vendor_full_name: device.full_name.to_string(),
-                        }),
+                        });
+                if device.count == 1 {
+                    talked_to_list.push(TalkedToDisplay {
+                        name: talked_to,
                         count: device.count,
                         count_string: "1 time".to_string(),
                     });
                 }
                 else {
                     talked_to_list.push(TalkedToDisplay {
-                        name: format::device_name(format::DeviceName {
-                            custom_name: device.custom_name.to_string(),
-                            host_name: device.host_name.to_string(),
-                            ip_address: device.ip_address.to_string(),
-                            vendor_full_name: device.full_name.to_string(),
-                        }),
+                        name: talked_to,
                         count: device.count,
                         count_string: format!("{} times", device.count),
                     });
                 }
             }
             debug!("process_event: talked_to_list: {:?}", talked_to_list);
+
+            let devices_talked_at_query = sql_query("SELECT ip.address as ip_address, ip.host_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND tgt_mac_id = 0 GROUP BY tgt_ip_id ORDER BY count DESC")
+                .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
+                .bind::<Integer, _>(time::elapsed(86400) as i32);
+            debug!(
+                "send_notification: devices_talked_at_query: {}",
+                debug_query::<Sqlite, _>(&devices_talked_at_query).to_string()
+            );
+            let devices_talked_at: Vec<TalkedAt> = match devices_talked_at_query.load(&self.sql) {
+                Ok(talked_at) => talked_at,
+                Err(e) => {
+                    warn!("send_notification; devices_talked_at_query error: {}", e);
+                    vec![TalkedAt {
+                        ip_address: netgrasp_event_wrapper.source.ip.address.to_string(),
+                        host_name: netgrasp_event_wrapper.source.ip.host_name.to_string(),
+                        count: 1,
+                    }]
+                }
+            };
+            debug!("process_event: devices_talked_to: {:?}", devices_talked_at);
+
+            let devices_talked_at_count = devices_talked_at.len();
+            let devices_talked_at_count_string: String;
+            if devices_talked_at_count == 1 {
+                devices_talked_at_count_string = "1 device".to_string();
+            } else {
+                devices_talked_at_count_string = format!("{} devices", devices_talked_at_count);
+            }
+            debug!(
+                "process_event: devices_talked_at_count_string: {:?}",
+                devices_talked_at_count_string
+            );
+
+            let mut talked_at_list: Vec<TalkedToDisplay> = vec![];
+            for device in devices_talked_at {
+                let talked_at = format::device_name(format::DeviceName {
+                            custom_name: "".to_string(),
+                            host_name: device.host_name.to_string(),
+                            ip_address: device.ip_address.to_string(),
+                            vendor_full_name: "".to_string(),
+                    });
+                if device.count == 1 {
+                    talked_at_list.push(TalkedToDisplay {
+                        name: talked_at,
+                        count: device.count,
+                        count_string: "1 time".to_string(),
+                    });
+                }
+                else {
+                    talked_at_list.push(TalkedToDisplay {
+                        name: talked_at,
+                        count: device.count,
+                        count_string: format!("{} times", device.count),
+                    });
+                }
+            }
+            debug!("process_event: talked_at_list: {:?}", talked_at_list);
 
             let mut notification = Notification::init("Netgrasp", "", &event_detail.description);
             notification.add_value("event".to_string(), event_detail.name);
@@ -1112,7 +1143,7 @@ impl NetgraspDb {
             notification.add_value("recently_seen".to_string(), recently_seen_string);
             notification.add_value(
                 "devices_talked_to_count".to_string(),
-                devices_talked_to_count.counter.to_string(),
+                devices_talked_to_count.to_string(),
             );
             notification.add_value(
                 "devices_talked_to_count_string".to_string(),
@@ -1120,11 +1151,54 @@ impl NetgraspDb {
             );
             notification
                 .add_serde_json_value("devices_talked_to".to_string(), to_json(&talked_to_list));
+            notification.add_value(
+                "devices_talked_at_count".to_string(),
+                devices_talked_at_count.to_string(),
+            );
+            notification.add_value(
+                "devices_talked_at_count_string".to_string(),
+                devices_talked_at_count_string.to_string(),
+            );
+            notification
+                .add_serde_json_value("devices_talked_at".to_string(), to_json(&talked_at_list));
             notification.set_title_template(templates::NETGRASP_TITLE_TEMPLATE.to_string());
-            notification.set_short_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
-            notification.set_short_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
-            notification.set_long_text_template(templates::NETGRASP_TEXT_TEMPLATE.to_string());
-            notification.set_long_html_template(templates::NETGRASP_HTML_TEMPLATE.to_string());
+            
+            // start building the templates
+            let text_template = templates::NETGRASP_TEXT_TEMPLATE.to_string();
+            let html_template = templates::NETGRASP_HTML_TEMPLATE.to_string();
+
+            // add block for devices talked to
+            let text_inner_template: String;
+            let html_inner_template: String;
+            if devices_talked_to_count > 0 {
+                text_inner_template = text_template + templates::NETGRASP_TEXT_TALKED_TO_TEMPLATE;
+                html_inner_template = html_template + templates::NETGRASP_HTML_TALKED_TO_TEMPLATE;
+            }
+            else {
+                text_inner_template = text_template;
+                html_inner_template = html_template;
+            }
+
+            // add block for devices talked at
+            let text_inner2_template: String;
+            let html_inner2_template: String;
+            if devices_talked_at_count > 0 {
+                text_inner2_template = text_inner_template + templates::NETGRASP_TEXT_TALKED_AT_TEMPLATE;
+                html_inner2_template = html_inner_template + templates::NETGRASP_HTML_TALKED_AT_TEMPLATE;
+            }
+            else {
+                text_inner2_template = text_inner_template;
+                html_inner2_template = html_inner_template;
+            }
+
+            // finish building the templates
+            let text_template = text_inner2_template + templates::NETGRASP_TEXT_FOOTER_TEMPLATE;
+            let html_template = html_inner2_template + templates::NETGRASP_HTML_FOOTER_TEMPLATE;
+
+            notification.set_short_text_template(text_template.clone());
+            notification.set_short_html_template(html_template.clone());
+            notification.set_long_text_template(text_template);
+            notification.set_long_html_template(html_template);
             eprintln!("notification: {:?}", notification);
             match notification.send("http://localhost:8000", event_detail.priority, 0, None) {
                 Err(e) => eprintln!("Error sending notification: {:?}", e),
