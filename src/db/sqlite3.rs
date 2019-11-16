@@ -102,6 +102,7 @@ pub struct TalkedTo {
 pub struct TalkedToDisplay {
     pub name: String,
     pub count: i32,
+    pub count_string: String,
 }
 
 #[derive(Debug, Queryable, QueryableByName)]
@@ -923,7 +924,6 @@ impl NetgraspDb {
             };
             debug!("process_event: recently_seen: {}", recently_seen);
 
-            // @TODO: handle this in handlebars template
             let recently_seen_string: String;
             if recently_seen == 1 {
                 recently_seen_string = "1 time".to_string();
@@ -1009,16 +1009,15 @@ impl NetgraspDb {
                 devices_talked_to_count
             );
 
-            // @TODO: use handlebars to pluralize
-            let devices_talked_to_string: String;
+            let devices_talked_to_count_string: String;
             if devices_talked_to_count.counter == 1 {
-                devices_talked_to_string = "device".to_string();
+                devices_talked_to_count_string = "1 device".to_string();
             } else {
-                devices_talked_to_string = "devices".to_string();
+                devices_talked_to_count_string = format!("{} devices", devices_talked_to_count.counter);
             }
             debug!(
-                "process_event: devices_talked_to_string: {:?}",
-                devices_talked_to_string
+                "process_event: devices_talked_to_count_string: {:?}",
+                devices_talked_to_count_string
             );
 
             let devices_talked_to_query = sql_query("SELECT ip.address as ip_address, ip.custom_name, ip.host_name, vendor.full_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id LEFT JOIN mac ON ip.mac_id = mac.mac_id LEFT JOIN vendor ON mac.vendor_id = vendor.vendor_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND mac.mac_id > 0 AND vendor.vendor_id > 0 AND network_event.tgt_ip_id > 0 GROUP BY tgt_ip_id ORDER BY count DESC")
@@ -1046,15 +1045,30 @@ impl NetgraspDb {
 
             let mut talked_to_list: Vec<TalkedToDisplay> = vec![];
             for device in devices_talked_to {
-                talked_to_list.push(TalkedToDisplay {
-                    name: format::device_name(format::DeviceName {
-                        custom_name: device.custom_name.to_string(),
-                        host_name: device.host_name.to_string(),
-                        ip_address: device.ip_address.to_string(),
-                        vendor_full_name: device.full_name.to_string(),
-                    }),
-                    count: device.count,
-                });
+                if device.count == 1 {
+                    talked_to_list.push(TalkedToDisplay {
+                        name: format::device_name(format::DeviceName {
+                            custom_name: device.custom_name.to_string(),
+                            host_name: device.host_name.to_string(),
+                            ip_address: device.ip_address.to_string(),
+                            vendor_full_name: device.full_name.to_string(),
+                        }),
+                        count: device.count,
+                        count_string: "1 time".to_string(),
+                    });
+                }
+                else {
+                    talked_to_list.push(TalkedToDisplay {
+                        name: format::device_name(format::DeviceName {
+                            custom_name: device.custom_name.to_string(),
+                            host_name: device.host_name.to_string(),
+                            ip_address: device.ip_address.to_string(),
+                            vendor_full_name: device.full_name.to_string(),
+                        }),
+                        count: device.count,
+                        count_string: format!("{} times", device.count),
+                    });
+                }
             }
             debug!("process_event: talked_to_list: {:?}", talked_to_list);
 
@@ -1101,8 +1115,8 @@ impl NetgraspDb {
                 devices_talked_to_count.counter.to_string(),
             );
             notification.add_value(
-                "devices_talked_to_string".to_string(),
-                devices_talked_to_string.to_string(),
+                "devices_talked_to_count_string".to_string(),
+                devices_talked_to_count_string.to_string(),
             );
             notification
                 .add_serde_json_value("devices_talked_to".to_string(), to_json(&talked_to_list));

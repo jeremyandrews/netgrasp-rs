@@ -8,9 +8,9 @@ pub const NETGRASP_TEXT_TEMPLATE: &str = "{{notification}}:
  * first seen: {{first_seen}}
  * recently seen: {{recently_seen}}
 
-In the past 24 hours, this device talked to {{devices_talked_to_count}} {{devices_talked_to_string}}:
+In the past 24 hours, this device talked to {{devices_talked_to_count_string}}:
 {{#each devices_talked_to as |device| ~}}
- * {{device.name}} [{{device.count}} times]
+ * {{device.name}} [{{device.count_string}}]
 {{/each~}}
 
 --
@@ -30,9 +30,9 @@ pub const NETGRASP_HTML_TEMPLATE: &str = r#"
     <LI>first seen: {{first_seen}}</LI>
     <LI>recently seen: {{recently_seen}}</LI>
   </UL></p>
-  <P>In the past 24 hours, this device talked to {{devices_talked_to_count}} {{devices_talked_to_string}}:<UL>
+  <P>In the past 24 hours, this device talked to {{devices_talked_to_count_string}}:<UL>
     {{#each devices_talked_to as |device| ~}}
-    <LI>{{device.name}} [{{device.count}} times]</LI>
+    <LI>{{device.name}} [{{device.count_string}}]</LI>
     {{/each~}}
   </UL></P>
   <DIV ID="footer">
