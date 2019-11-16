@@ -62,7 +62,7 @@ impl NetgraspEventWrapper {
 pub const IPS_ACTIVE_FOR: u64 = 10800;
 
 // Limit the number of devices to list when listing devices talked to
-pub const TALKED_TO_LIMIT: i64 = 50;
+pub const TALKED_TO_LIMIT: i32 = 100;
 
 pub struct NetgraspDb {
     sql: SqliteConnection,
@@ -1020,10 +1020,10 @@ impl NetgraspDb {
                 devices_talked_to_count_string
             );
 
-            let devices_talked_to_query = sql_query("SELECT ip.address as ip_address, ip.custom_name, ip.host_name, vendor.full_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id LEFT JOIN mac ON ip.mac_id = mac.mac_id LEFT JOIN vendor ON mac.vendor_id = vendor.vendor_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND mac.mac_id > 0 AND vendor.vendor_id > 0 AND network_event.tgt_ip_id > 0 GROUP BY tgt_ip_id ORDER BY count DESC")
+            let devices_talked_to_query = sql_query("SELECT ip.address as ip_address, ip.custom_name, ip.host_name, vendor.full_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id LEFT JOIN mac ON ip.mac_id = mac.mac_id LEFT JOIN vendor ON mac.vendor_id = vendor.vendor_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND mac.mac_id > 0 AND vendor.vendor_id > 0 AND network_event.tgt_ip_id > 0 GROUP BY tgt_ip_id LIMIT ? ORDER BY count DESC")
                 .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
-                .bind::<Integer, _>(time::elapsed(86400) as i32);
-            //.limit(TALKED_TO_LIMIT);
+                .bind::<Integer, _>(time::elapsed(86400) as i32)
+                .bind::<Integer, _>(TALKED_TO_LIMIT);
             debug!(
                 "send_notification: devices_talked_to_query: {}",
                 debug_query::<Sqlite, _>(&devices_talked_to_query).to_string()
