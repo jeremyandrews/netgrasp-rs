@@ -107,6 +107,8 @@ pub struct IpDetail {
     pub host_name: String,
     #[sql_type = "Text"]
     pub custom_name: String,
+    #[sql_type = "Integer"]
+    pub mac_id: i32,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -1028,6 +1030,7 @@ impl NetgraspDb {
                         ip::address,
                         ip::host_name,
                         ip::custom_name,
+                        ip::mac_id,
                     ))
                     .filter(ip::ip_id.eq(device.tgt_ip_id))
                     .limit(1);
@@ -1043,6 +1046,7 @@ impl NetgraspDb {
                             address: netgrasp_event_wrapper.source.ip.address.to_string(),
                             host_name: netgrasp_event_wrapper.source.ip.host_name.to_string(),
                             custom_name: netgrasp_event_wrapper.source.ip.custom_name.to_string(),
+                            mac_id: netgrasp_event_wrapper.source.mac.mac_id,
                         }
                     }
                 };
@@ -1054,7 +1058,7 @@ impl NetgraspDb {
                         mac::address,
                         vendor::full_name,
                     ))
-                    .filter(mac::mac_id.eq(device.tgt_mac_id))
+                    .filter(mac::mac_id.eq(ip_detail.mac_id))
                     .limit(1);
                 debug!(
                     "process_event: mac_query: {}",
@@ -1127,9 +1131,9 @@ impl NetgraspDb {
             let devices_talked_at_count = talked_at_list.len();
             let devices_talked_at_count_string: String;
             if devices_talked_at_count == 1 {
-                devices_talked_at_count_string = "1 device".to_string();
+                devices_talked_at_count_string = "1 unknown device".to_string();
             } else {
-                devices_talked_at_count_string = format!("{} devices", devices_talked_at_count);
+                devices_talked_at_count_string = format!("{} unknown devices", devices_talked_at_count);
             }
             debug!(
                 "process_event: devices_talked_at_count_string: {:?}",
