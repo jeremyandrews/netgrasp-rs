@@ -83,26 +83,30 @@ pub struct NetgraspActiveDevice {
 
 #[derive(Debug, Default, PartialEq, Queryable, QueryableByName, Serialize)]
 pub struct TalkedTo {
-    #[sql_type = "Text"]
-    pub ip_address: String,
-    #[sql_type = "Text"]
-    pub custom_name: String,
-    #[sql_type = "Text"]
-    pub host_name: String,
-    #[sql_type = "Text"]
-    pub full_name: String,
+    #[sql_type = "Integer"]
+    pub tgt_mac_id: i32,
+    #[sql_type = "Integer"]
+    pub tgt_ip_id: i32,
     #[sql_type = "Integer"]
     pub count: i32,
 }
 
 #[derive(Debug, Default, PartialEq, Queryable, QueryableByName, Serialize)]
-pub struct TalkedAt {
+pub struct MacDetail {
     #[sql_type = "Text"]
-    pub ip_address: String,
+    pub address: String,
+    #[sql_type = "Text"]
+    pub full_name: String,
+}
+
+#[derive(Debug, Default, PartialEq, Queryable, QueryableByName)]
+pub struct IpDetail {
+    #[sql_type = "Text"]
+    pub address: String,
     #[sql_type = "Text"]
     pub host_name: String,
-    #[sql_type = "Integer"]
-    pub count: i32,
+    #[sql_type = "Text"]
+    pub custom_name: String,
 }
 
 #[derive(Debug, Default, Serialize)]
@@ -896,7 +900,10 @@ impl NetgraspDb {
         netgrasp_event_type: &NetgraspEventType,
         netgrasp_event_wrapper: &NetgraspEventWrapper,
     ) {
+        use crate::db::schema::ip;
+        use crate::db::schema::mac;
         use crate::db::schema::network_event::dsl::*;
+        use crate::db::schema::vendor;
         use std::convert::TryInto;
 
         let event_detail = netgrasp_event_detail(netgrasp_event_type);
@@ -989,7 +996,12 @@ impl NetgraspDb {
             };
             debug!("process_event: first_seen: {}", first_seen);
 
-            let devices_talked_to_query = sql_query("SELECT ip.address as ip_address, ip.custom_name, ip.host_name, vendor.full_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id LEFT JOIN mac ON ip.mac_id = mac.mac_id LEFT JOIN vendor ON mac.vendor_id = vendor.vendor_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND mac.mac_id > 0 AND vendor.vendor_id > 0 AND network_event.tgt_ip_id > 0 GROUP BY tgt_ip_id ORDER BY count DESC")
+            // build list of devices that have been talked to
+            //let devices_talked_to_query = sql_query("SELECT ip.address as ip_address, ip.custom_name, ip.host_name, vendor.full_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id LEFT JOIN mac ON ip.mac_id = mac.mac_id LEFT JOIN vendor ON mac.vendor_id = vendor.vendor_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND mac.mac_id > 0 AND vendor.vendor_id > 0 AND network_event.tgt_ip_id > 0 GROUP BY tgt_ip_id ORDER BY count DESC")
+            // @TODO here: breaking this down differently...
+            // 1) query only network_event table for all tgt_ip_id's
+            // 2) get detail about each tgt_ip_id
+            let devices_talked_to_query = sql_query("SELECT MAX(tgt_mac_id) AS tgt_mac_id, tgt_ip_id, COUNT(tgt_ip_id) AS count FROM network_event WHERE ip_id = ? AND created >= ? AND tgt_ip_id > 0 GROUP BY tgt_ip_id ORDER BY count DESC")
                 .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
                 .bind::<Integer, _>(time::elapsed(86400) as i32);
             debug!(
@@ -999,18 +1011,108 @@ impl NetgraspDb {
             let devices_talked_to: Vec<TalkedTo> = match devices_talked_to_query.load(&self.sql) {
                 Ok(talked_to) => talked_to,
                 Err(e) => {
-                    warn!("send_notification; devices_talked_to_query error: {}", e);
+                    warn!("process_event; devices_talked_to_query error: {}", e);
                     vec![TalkedTo {
-                        ip_address: netgrasp_event_wrapper.source.ip.address.to_string(),
-                        custom_name: netgrasp_event_wrapper.source.ip.custom_name.to_string(),
-                        host_name: netgrasp_event_wrapper.source.ip.host_name.to_string(),
-                        full_name: netgrasp_event_wrapper.source.vendor.full_name.to_string(),
+                        tgt_mac_id: 0,
+                        tgt_ip_id: netgrasp_event_wrapper.source.ip.ip_id,
                         count: 1,
                     }]
                 }
             };
-            debug!("process_event: devices_talked_to: {:?}", devices_talked_to);
-            let devices_talked_to_count = devices_talked_to.len();
+
+            let mut talked_to_list: Vec<TalkedToDisplay> = vec![];
+            let mut talked_at_list: Vec<TalkedToDisplay> = vec![];
+            for device in &devices_talked_to {
+                let ip_query = ip::table
+                    .select((
+                        ip::address,
+                        ip::host_name,
+                        ip::custom_name,
+                    ))
+                    .filter(ip::ip_id.eq(device.tgt_ip_id))
+                    .limit(1);
+                debug!(
+                    "process_event: ip_query: {}",
+                    debug_query::<Sqlite, _>(&ip_query).to_string()
+                );
+                let ip_detail: IpDetail = match ip_query.get_result(&self.sql) {
+                    Ok(i) => i,
+                    Err(e) => {
+                        warn!("process_event; ip_query error: {}", e);
+                        IpDetail {
+                            address: netgrasp_event_wrapper.source.ip.address.to_string(),
+                            host_name: netgrasp_event_wrapper.source.ip.host_name.to_string(),
+                            custom_name: netgrasp_event_wrapper.source.ip.custom_name.to_string(),
+                        }
+                    }
+                };
+
+                // try to query mac details, if this fails default to "unknown"
+                let mac_query = mac::table
+                    .inner_join(vendor::table)
+                    .select((
+                        mac::address,
+                        vendor::full_name,
+                    ))
+                    .filter(mac::mac_id.eq(device.tgt_mac_id))
+                    .limit(1);
+                debug!(
+                    "process_event: mac_query: {}",
+                    debug_query::<Sqlite, _>(&mac_query).to_string()
+                );
+                let mac_detail: MacDetail = match mac_query.get_result(&self.sql) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        // if tgt_mac_id is 0 we'll default to "unknown"
+                        debug!("process_event; mac_query error: {}", e);
+                        MacDetail {
+                            address: "unknown".to_string(),
+                            full_name: "unknown".to_string(),
+                        }
+                    }
+                };
+
+                let talked_to = format::device_name(format::DeviceName {
+                            custom_name: ip_detail.custom_name.to_string(),
+                            host_name: ip_detail.host_name.to_string(),
+                            ip_address: ip_detail.address.to_string(),
+                            vendor_full_name: mac_detail.full_name.to_string(),
+                        });
+                if device.count == 1 {
+                    if device.tgt_mac_id > 0 {
+                        talked_to_list.push(TalkedToDisplay {
+                            name: talked_to,
+                            count: device.count,
+                            count_string: "1 time".to_string(),
+                        });
+                    }
+                    else {
+                        talked_at_list.push(TalkedToDisplay {
+                            name: talked_to,
+                            count: device.count,
+                            count_string: "1 time".to_string(),
+                        });
+                    }
+                }
+                else {
+                    if device.tgt_mac_id > 0 {
+                        talked_to_list.push(TalkedToDisplay {
+                            name: talked_to,
+                            count: device.count,
+                            count_string: format!("{} times", device.count),
+                        });
+                    }
+                    else {
+                        talked_at_list.push(TalkedToDisplay {
+                            name: talked_to,
+                            count: device.count,
+                            count_string: format!("{} times", device.count),
+                        });
+                    }
+                }
+            }
+
+            let devices_talked_to_count = talked_to_list.len();
             let devices_talked_to_count_string: String;
             if devices_talked_to_count == 1 {
                 devices_talked_to_count_string = "1 device".to_string();
@@ -1021,52 +1123,8 @@ impl NetgraspDb {
                 "process_event: devices_talked_to_count_string: {:?}",
                 devices_talked_to_count_string
             );
-            let mut talked_to_list: Vec<TalkedToDisplay> = vec![];
-            for device in devices_talked_to {
-                let talked_to = format::device_name(format::DeviceName {
-                            custom_name: device.custom_name.to_string(),
-                            host_name: device.host_name.to_string(),
-                            ip_address: device.ip_address.to_string(),
-                            vendor_full_name: device.full_name.to_string(),
-                        });
-                if device.count == 1 {
-                    talked_to_list.push(TalkedToDisplay {
-                        name: talked_to,
-                        count: device.count,
-                        count_string: "1 time".to_string(),
-                    });
-                }
-                else {
-                    talked_to_list.push(TalkedToDisplay {
-                        name: talked_to,
-                        count: device.count,
-                        count_string: format!("{} times", device.count),
-                    });
-                }
-            }
-            debug!("process_event: talked_to_list: {:?}", talked_to_list);
 
-            let devices_talked_at_query = sql_query("SELECT ip.address as ip_address, ip.host_name, COUNT(network_event.tgt_ip_id) as count FROM network_event LEFT JOIN ip ON network_event.tgt_ip_id = ip.ip_id WHERE network_event.ip_id = ? AND network_event.created >= ? AND tgt_mac_id = 0 GROUP BY tgt_ip_id ORDER BY count DESC")
-                .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
-                .bind::<Integer, _>(time::elapsed(86400) as i32);
-            debug!(
-                "send_notification: devices_talked_at_query: {}",
-                debug_query::<Sqlite, _>(&devices_talked_at_query).to_string()
-            );
-            let devices_talked_at: Vec<TalkedAt> = match devices_talked_at_query.load(&self.sql) {
-                Ok(talked_at) => talked_at,
-                Err(e) => {
-                    warn!("send_notification; devices_talked_at_query error: {}", e);
-                    vec![TalkedAt {
-                        ip_address: netgrasp_event_wrapper.source.ip.address.to_string(),
-                        host_name: netgrasp_event_wrapper.source.ip.host_name.to_string(),
-                        count: 1,
-                    }]
-                }
-            };
-            debug!("process_event: devices_talked_to: {:?}", devices_talked_at);
-
-            let devices_talked_at_count = devices_talked_at.len();
+            let devices_talked_at_count = talked_at_list.len();
             let devices_talked_at_count_string: String;
             if devices_talked_at_count == 1 {
                 devices_talked_at_count_string = "1 device".to_string();
@@ -1078,30 +1136,7 @@ impl NetgraspDb {
                 devices_talked_at_count_string
             );
 
-            let mut talked_at_list: Vec<TalkedToDisplay> = vec![];
-            for device in devices_talked_at {
-                let talked_at = format::device_name(format::DeviceName {
-                            custom_name: "".to_string(),
-                            host_name: device.host_name.to_string(),
-                            ip_address: device.ip_address.to_string(),
-                            vendor_full_name: "".to_string(),
-                    });
-                if device.count == 1 {
-                    talked_at_list.push(TalkedToDisplay {
-                        name: talked_at,
-                        count: device.count,
-                        count_string: "1 time".to_string(),
-                    });
-                }
-                else {
-                    talked_at_list.push(TalkedToDisplay {
-                        name: talked_at,
-                        count: device.count,
-                        count_string: format!("{} times", device.count),
-                    });
-                }
-            }
-            debug!("process_event: talked_at_list: {:?}", talked_at_list);
+            debug!("process_event: talked_to_list: {:?}", talked_to_list);
 
             let mut notification = Notification::init("Netgrasp", "", &event_detail.description);
             notification.add_value("event".to_string(), event_detail.name);
