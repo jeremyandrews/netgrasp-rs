@@ -73,7 +73,8 @@ pub struct NewMac {
     pub updated: i32,
 }
 
-#[derive(Debug, Default, Clone, Queryable, QueryableByName)]
+#[derive(Debug, Default, Clone, Queryable, QueryableByName, Identifiable)]
+#[primary_key(ip_id)]
 #[table_name = "ip"]
 pub struct Ip {
     pub ip_id: i32,

@@ -703,7 +703,7 @@ impl NetgraspDb {
         is_source: bool,
     ) -> NetgraspEventWrapper {
         use crate::db::schema::ip::dsl::*;
-        use crate::db::schema::network_event::dsl::{created, ip_id, network_event};
+        use crate::db::schema::network_event;
 
         let wrapper_mac_id;
         let wrapper_mac;
@@ -730,9 +730,6 @@ impl NetgraspDb {
                 debug_query::<Sqlite, _>(&load_ip_id_query).to_string()
             );
             loaded_ip_id = load_ip_id_query.get_result::<Ip>(&self.sql);
-        // @TODO: if ip.address == ip.host_name, perhaps perform another reverse IP lookup.
-        // @TODO: further, perhaps always perform a new reverse IP lookup every ~24 hours? Or,
-        // simply respect the DNS ttl?
         }
         // This packet includes a MAC, make sure we've already recorded it in the database
         else {
@@ -782,10 +779,10 @@ impl NetgraspDb {
                     }
                     // We've seen this ip and mac together before, check if we've seen it recently
                     else {
-                        let previously_seen_query = network_event
-                            .select(created)
-                            .filter(ip_id.eq(&i.ip_id))
-                            .order(created.desc())
+                        let previously_seen_query = network_event::table
+                            .select(network_event::created)
+                            .filter(network_event::ip_id.eq(&i.ip_id))
+                            .order(network_event::created.desc())
                             .limit(2);
                         debug!(
                             "process_ip: previously_seen_query {}",
@@ -815,6 +812,45 @@ impl NetgraspDb {
                         netgrasp_event_wrapper
                             .events
                             .push(NetgraspEventType::DeviceSeen);
+                    }
+                }
+
+                // if the hostname hasn't been updated in the past hour, perform a dns lookup
+                // @TODO respect DNS TTL
+                if i.updated > (time::elapsed(3600) as i32) {
+                    let addr: std::net::IpAddr = match ip_address.parse() {
+                        Ok(i) => i,
+                        Err(e) => {
+                            error!("Error parsing ip_address {}: [{}]", &ip_address, e);
+                            // @TODO: how should we handle this gracefully?
+                            return netgrasp_event_wrapper;
+                        }
+                    };
+                    let hostname: String = match lookup_addr(&addr) {
+                        Ok(h) => h,
+                        Err(e) => {
+                            warn!(
+                                "Failed to look up host_name for ip_address {}: [{}]",
+                                &ip_address, e
+                            );
+                            "unknown".to_string()
+                        }
+                    };
+                    let timestamp = time::timestamp_now() as i32;
+                    let update_ip_query = diesel::update(ip.filter(ip_id.eq(i.ip_id)))
+                        .set((host_name.eq(&hostname), updated.eq(timestamp)));
+                    debug!(
+                        "process_ip: update_ip_query {}",
+                        debug_query::<Sqlite, _>(&update_ip_query).to_string()
+                    );
+                    match update_ip_query.execute(&self.sql) {
+                        // failed to update ip object
+                        Err(e) => error!("process_ip: update_ip_query error: {}", e),
+                        // successfully updated ip object
+                        Ok(_) => {
+                            i.host_name = hostname;
+                            i.updated = timestamp;
+                        }
                     }
                 }
 
