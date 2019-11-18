@@ -1083,7 +1083,7 @@ impl NetgraspDb {
                             vendor_full_name: mac_detail.full_name.to_string(),
                         });
                 if device.count == 1 {
-                    if device.tgt_mac_id > 0 {
+                    if ip_detail.mac_id > 0 {
                         talked_to_list.push(TalkedToDisplay {
                             name: talked_to,
                             count: device.count,
@@ -1099,7 +1099,7 @@ impl NetgraspDb {
                     }
                 }
                 else {
-                    if device.tgt_mac_id > 0 {
+                    if ip_detail.mac_id > 0 {
                         talked_to_list.push(TalkedToDisplay {
                             name: talked_to,
                             count: device.count,
