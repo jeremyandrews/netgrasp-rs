@@ -150,6 +150,7 @@ enum NetgraspEventType {
     IpInactive,
     IpReturned,
     //IpChanged,
+    IpHostnameChanged,
     //IpDuplicate,
     //IpNotOnNetwork,
     DeviceFirstSeen,
@@ -268,6 +269,13 @@ fn netgrasp_event_detail(netgrasp_event_type: &NetgraspEventType) -> NetgraspEve
             description: "IP not on network".to_string(),
             priority: 140,
         },
+        */
+        NetgraspEventType::IpHostnameChanged => NetgraspEventDetail {
+            name: "IP hostname changed".to_string(),
+            description: "IP hostname changed".to_string(),
+            priority: 145,
+        },
+        /*
         NetgraspEventType::MacDuplicate => NetgraspEventDetail {
             name: "Duplicate mac".to_string(),
             description: "Duplicate mac addresses on network".to_string(),
@@ -848,7 +856,12 @@ impl NetgraspDb {
                         Err(e) => error!("process_ip: update_ip_query error: {}", e),
                         // successfully updated ip object
                         Ok(_) => {
-                            i.host_name = hostname;
+                            if i.host_name != hostname {
+                                i.host_name = hostname;
+                                netgrasp_event_wrapper
+                                    .events
+                                    .push(NetgraspEventType::IpHostnameChanged);
+                            }
                             i.updated = timestamp;
                         }
                     }
