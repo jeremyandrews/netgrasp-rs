@@ -16,6 +16,8 @@ CREATE TABLE IF NOT EXISTS network_event (
 	FOREIGN KEY(vendor_id) REFERENCES vendor(vendor_id),
 	FOREIGN KEY(ip_id) REFERENCES ip(ip_id)
 );
+CREATE INDEX IF NOT EXISTS idxnetwork_event_ip_created ON network_event (ip_id, created);
+CREATE INDEX IF NOT EXISTS idxnetwork_event_ip_tgt_created_mac ON network_event (ip_id, tgt_ip_id, created, tgt_mac_id);
 
 CREATE TABLE IF NOT EXISTS interface (
 	interface_id INTEGER NOT NULL PRIMARY KEY,
@@ -24,6 +26,7 @@ CREATE TABLE IF NOT EXISTS interface (
 	created INTEGER NOT NULL,
 	updated INTEGER NOT NULL
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idxinterface_address_label ON interface (address, label);
 
 CREATE TABLE IF NOT EXISTS mac (
 	mac_id  INTEGER NOT NULL PRIMARY KEY,

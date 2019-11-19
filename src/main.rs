@@ -42,6 +42,7 @@ mod notifications {
 const DEFAULT_NETSCAN_RANGE: u64 = 30;
 const DEFAULT_PROCESS_INACTIVE_IPS: u64 = 30;
 const DEFAULT_PROCESS_NETSCANS: u64 = 30;
+const DEFAULT_TMP_ACTIVE_DEVICES: u64 = 5;
 
 const DEFAULT_MINIMUM_PRIORITY: &str = "140";
 
@@ -237,6 +238,8 @@ fn main() {
     let mut last_processed_network_scans: u64 = 0;
     let mut netscan_range = DEFAULT_NETSCAN_RANGE;
 
+    let mut last_tmp_display_active_devices: u64 = 0;
+
     loop {
         trace!("top of main loop");
         match arp_rx.recv() {
@@ -247,11 +250,14 @@ fn main() {
             }
         }
 
-        // proof of concept: display current list of known active devices.
-        let active_devices = netgrasp_db.get_active_devices();
-        utils::format::display_active_devices(active_devices);
-
         let now = utils::time::timestamp_now();
+        if (now - DEFAULT_TMP_ACTIVE_DEVICES) > last_tmp_display_active_devices {
+            last_tmp_display_active_devices = now;
+            // proof of concept: display current list of known active devices.
+            let active_devices = netgrasp_db.get_active_devices();
+            utils::format::display_active_devices(active_devices);
+        }
+
         if (now - DEFAULT_PROCESS_INACTIVE_IPS) > last_processed_inactive_ips {
             last_processed_inactive_ips = now;
             netgrasp_db.process_inactive_ips();
