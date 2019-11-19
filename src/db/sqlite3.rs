@@ -1188,7 +1188,6 @@ impl NetgraspDb {
                     }
                 }
             }
-            std::process::exit(1);
 
             let devices_talked_to_count_string: String;
             if devices_talked_to_count.counter == 1 {
