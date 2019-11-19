@@ -1274,9 +1274,9 @@ impl NetgraspDb {
             notification.set_short_html_template(html_template.clone());
             notification.set_long_text_template(text_template);
             notification.set_long_html_template(html_template);
-            eprintln!("notification: {:?}", notification);
+            debug!("notification: {:?}", notification);
             match notification.send("http://localhost:8000", event_detail.priority, 0, None) {
-                Err(e) => eprintln!("Error sending notification: {:?}", e),
+                Err(e) => error!("Error sending notification: {:?}", e),
                 Ok(_) => (),
             };
         }
@@ -1583,7 +1583,7 @@ impl NetgraspDb {
             .set((processed.eq(1), updated.eq(now as i32)))
             .execute(&self.sql);
         match response {
-            Err(e) => eprintln!("unexpected error processing inactive ips: {}", e),
+            Err(e) => error!("unexpected error processing inactive ips: {}", e),
             Ok(_) => (),
         }
     }
