@@ -1166,7 +1166,7 @@ impl NetgraspDb {
                             talked_to_list.push(TalkedToDisplay {
                                 name: talked_to,
                                 count: device.count,
-                                count_string: "1 time (no reply)".to_string(),
+                                count_string: "1 time - no reply".to_string(),
                             });
                         }
                     }
@@ -1182,7 +1182,7 @@ impl NetgraspDb {
                             talked_to_list.push(TalkedToDisplay {
                                 name: talked_to,
                                 count: device.count,
-                                count_string: format!("{} times (no replies)", device.count),
+                                count_string: format!("{} times - no replies", device.count),
                             });
                         }
                     }
