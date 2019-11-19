@@ -15,13 +15,6 @@ In the past 24 hours, this device talked to {{devices_talked_to_count_string}}:
  * {{device.name}} [{{device.count_string}}]
 {{/each~}}";
 
-pub const NETGRASP_TEXT_TALKED_AT_TEMPLATE: &str = "
-
-In the past 24 hours, this device talked at {{devices_talked_at_count_string}}:
-{{#each devices_talked_at as |device| ~}}
- * {{device.name}} [{{device.count_string}}]
-{{/each~}}";
-
 pub const NETGRASP_TEXT_FOOTER_TEMPLATE: &str = "
 
 --
@@ -45,12 +38,6 @@ pub const NETGRASP_HTML_TEMPLATE: &str = r#"
 pub const NETGRASP_HTML_TALKED_TO_TEMPLATE: &str = r#"
   <P>In the past 24 hours, this device talked to {{devices_talked_to_count_string}}:<UL>
     {{#each devices_talked_to as |device| ~}}<LI>{{device.name}} [{{device.count_string}}]</LI>{{/each~}}
-  </UL></P>
-"#;
-
-pub const NETGRASP_HTML_TALKED_AT_TEMPLATE: &str = r#"
-  <P>In the past 24 hours, this device talked at {{devices_talked_at_count_string}}:<UL>
-    {{#each devices_talked_at as |device| ~}}<LI>{{device.name}} [{{device.count_string}}]</LI>{{/each~}}
   </UL></P>
 "#;
 
