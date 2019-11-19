@@ -1056,7 +1056,7 @@ impl NetgraspDb {
             };
             debug!("process_event: first_seen: {}", first_seen);
 
-            let devices_talked_to_count_query = sql_query("SELECT COUNT(DISTINCT(tgt_ip_id)) FROM network_event WHERE ip_id = ? AND created >= ? AND tgt_ip_id > 0")
+            let devices_talked_to_count_query = sql_query("SELECT COUNT(DISTINCT(tgt_ip_id)) AS counter FROM network_event WHERE ip_id = ? AND created >= ? AND tgt_ip_id > 0")
                 .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
                 .bind::<Integer, _>(time::elapsed(86400) as i32);
             debug!(
@@ -1188,6 +1188,7 @@ impl NetgraspDb {
                     }
                 }
             }
+            std::process::exit(1);
 
             let devices_talked_to_count_string: String;
             if devices_talked_to_count.counter == 1 {
