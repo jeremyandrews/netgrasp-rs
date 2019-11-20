@@ -953,8 +953,6 @@ impl NetgraspDb {
         netgrasp_event_wrapper
     }
 
-    /// Assumption: events are always the source, not the target?
-    ///  false: "first requested" would be the tgt
     fn process_event(
         &self,
         netgrasp_event_type: &NetgraspEventType,
