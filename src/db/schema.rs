@@ -49,6 +49,21 @@ table! {
 }
 
 table! {
+    stats (stats_id) {
+        stats_id -> Integer,
+        mac_id -> Integer,
+        ip_id -> Integer,
+        period_date -> Integer,
+        period_length -> Integer,
+        period_number -> Integer,
+        total -> Integer,
+        different -> Integer,
+        created -> Integer,
+        updated -> Integer,
+    }
+}
+
+table! {
     vendor (vendor_id) {
         vendor_id -> Integer,
         name -> Text,
@@ -65,4 +80,11 @@ joinable!(network_event -> ip (ip_id));
 joinable!(network_event -> mac (mac_id));
 joinable!(network_event -> vendor (vendor_id));
 
-allow_tables_to_appear_in_same_query!(interface, ip, mac, network_event, vendor,);
+allow_tables_to_appear_in_same_query!(
+    interface,
+    ip,
+    mac,
+    network_event,
+    stats,
+    vendor,
+);

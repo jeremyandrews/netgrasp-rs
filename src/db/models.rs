@@ -1,4 +1,4 @@
-use super::schema::{interface, ip, mac, network_event, vendor};
+use super::schema::{interface, ip, mac, network_event, stats, vendor};
 
 #[derive(Debug, Default, Queryable, QueryableByName)]
 #[table_name = "network_event"]
@@ -93,6 +93,35 @@ pub struct NewIp {
     pub address: String,
     pub host_name: String,
     pub custom_name: String,
+    pub created: i32,
+    pub updated: i32,
+}
+
+#[derive(Debug, Default, Queryable, QueryableByName)]
+#[table_name = "stats"]
+pub struct Stats {
+    pub stats_id: i32,
+    pub mac_id: i32,
+    pub ip_id: i32,
+    pub period_date: i32,
+    pub period_length: i32,
+    pub period_number: i32,
+    pub total: i32,
+    pub different: i32,
+    pub created: i32,
+    pub updated: i32,
+}
+
+#[derive(Insertable)]
+#[table_name = "stats"]
+pub struct NewStats {
+    pub mac_id: i32,
+    pub ip_id: i32,
+    pub period_date: i32,
+    pub period_length: i32,
+    pub period_number: i32,
+    pub total: i32,
+    pub different: i32,
     pub created: i32,
     pub updated: i32,
 }
