@@ -450,104 +450,105 @@ impl NetgraspDb {
         // 1) detect anomalies 
         // 2) passively determine more quickly and less arbitrarily when a device has gone offline
 
-        let utc_now = Utc::now();
+        if netgrasp_event_wrapper.source.mac.mac_id != 0 && netgrasp_event_wrapper.source.ip.ip_id != 0 {
+            let utc_now = Utc::now();
+            // periods are defined in seconds
+            let periods: [i32; 3] = [600, 3600, 86400];
+            for period in periods.iter() {
+                // for convenience dereference current period as i64
+                let period_i64 = *period as i64;
 
-        // periods are defined in seconds
-        let periods: [i32; 3] = [600, 3600, 86400];
-        for period in periods.iter() {
-            // for convenience dereference current period as i64
-            let period_i64 = *period as i64;
+                // the period we're processing ends today, so find the timestamp for the start of today
+                let today_start = NaiveDate::from_ymd(utc_now.year(), utc_now.month(), utc_now.day()).and_hms(0, 0, 0);
+                // calculate the period we're currently in
+                let period_number_end = (utc_now.timestamp() - today_start.timestamp()) / period_i64;
+                // get the timestamp of when the period we're currently in started, this is our range end
+                let period_end_timestamp = today_start.timestamp() + (period_i64 * period_number_end);
+                // get the timestamp of when the previous period started, this is our range start
+                let period_start_timestamp = period_end_timestamp - period_i64;
+                let period_start = NaiveDateTime::from_timestamp(period_start_timestamp, 0);
 
-            // the period we're processing ends today, so find the timestamp for the start of today
-            let today_start = NaiveDate::from_ymd(utc_now.year(), utc_now.month(), utc_now.day()).and_hms(0, 0, 0);
-            // calculate the period we're currently in
-            let period_number_end = (utc_now.timestamp() - today_start.timestamp()) / period_i64;
-            // get the timestamp of when the period we're currently in started, this is our range end
-            let period_end_timestamp = today_start.timestamp() + (period_i64 * period_number_end);
-            // get the timestamp of when the previous period started, this is our range start
-            let period_start_timestamp = period_end_timestamp - period_i64;
-            let period_start = NaiveDateTime::from_timestamp(period_start_timestamp, 0);
+                // we may be dealing with yesterday, so re-calculate with period_start
+                let period_day_start = NaiveDate::from_ymd(period_start.year(), period_start.month(), period_start.day()).and_hms(0, 0, 0);
+                let period_number_start = (period_start_timestamp - period_day_start.timestamp()) / period_i64;
+                let yyyymmdd: i32 = period_start.format("%Y%m%d").to_string().parse::<i32>().unwrap();
 
-            // we may be dealing with yesterday, so re-calculate with period_start
-            let period_day_start = NaiveDate::from_ymd(period_start.year(), period_start.month(), period_start.day()).and_hms(0, 0, 0);
-            let period_number_start = (period_start_timestamp - period_day_start.timestamp()) / period_i64;
-            let yyyymmdd: i32 = period_start.format("%Y%m%d").to_string().parse::<i32>().unwrap();
+                debug!("today_start: {}, period_number_start: {}, period_number_end: {}", today_start.timestamp(), period_number_start, period_number_end);
 
-            debug!("today_start: {}, period_number_start: {}, period_number_end: {}", today_start.timestamp(), period_number_start, period_number_end);
+                let total_count =
+                    diesel::dsl::sql::<diesel::sql_types::Integer>("total AS count");
+                let stats_query = stats::table
+                    .select(total_count)
+                    .filter(stats::mac_id.eq(netgrasp_event_wrapper.source.mac.mac_id))
+                    .filter(stats::ip_id.eq(netgrasp_event_wrapper.source.ip.ip_id))
+                    .filter(stats::period_date.eq(yyyymmdd))
+                    .filter(stats::period_length.eq(period))
+                    .filter(stats::period_number.eq(period_number_start as i32))
+                    .limit(1);
+                debug!(
+                    "process_statistics: stats_query {}",
+                    debug_query::<Sqlite, _>(&stats_query).to_string()
+                );
+                match stats_query.get_result::<i32>(&self.sql)
+                {
+                    Ok(_) => (),
+                    // only calculate new totals if not already done
+                    Err(_) => {
+                        // how many times the device was seen over time period:
+                        let total_over_period_query =
+                            sql_query("SELECT COUNT(*) as count FROM network_event WHERE mac_id = ? AND ip_id = ? AND created >= ? AND created < ?")
+                                .bind::<Integer, _>(netgrasp_event_wrapper.source.mac.mac_id)
+                                .bind::<Integer, _>(netgrasp_event_wrapper.source.ip.ip_id)
+                                .bind::<Integer, _>(period_start_timestamp as i32)
+                                .bind::<Integer, _>(period_end_timestamp as i32);
+                        debug!(
+                            "process_statistics: total_over_period_query {}",
+                            debug_query::<Sqlite, _>(&total_over_period_query).to_string()
+                        );
+                        let total_count = match total_over_period_query.get_result::<Statistics>(&self.sql) {
+                            Ok(t) => t.count,
+                            Err(_) => 0,
+                        };
+                        debug!("process_statistics: period: {}, total_count: {}", period, total_count);
 
-            let total_count =
-                diesel::dsl::sql::<diesel::sql_types::Integer>("total AS count");
-            let stats_query = stats::table
-                .select(total_count)
-                .filter(stats::mac_id.eq(netgrasp_event_wrapper.source.mac.mac_id))
-                .filter(stats::ip_id.eq(netgrasp_event_wrapper.source.ip.ip_id))
-                .filter(stats::period_date.eq(yyyymmdd))
-                .filter(stats::period_length.eq(period))
-                .filter(stats::period_number.eq(period_number_start as i32))
-                .limit(1);
-            debug!(
-                "process_statistics: stats_query {}",
-                debug_query::<Sqlite, _>(&stats_query).to_string()
-            );
-            match stats_query.get_result::<i32>(&self.sql)
-            {
-                Ok(_) => (),
-                // only calculate new totals if not already done
-                Err(_) => {
-                    // how many times the device was seen over time period:
-                    let total_over_period_query =
-                        sql_query("SELECT COUNT(*) as count FROM network_event WHERE mac_id = ? AND ip_id = ? AND created >= ? AND created < ?")
-                            .bind::<Integer, _>(netgrasp_event_wrapper.source.mac.mac_id)
-                            .bind::<Integer, _>(netgrasp_event_wrapper.source.ip.ip_id)
-                            .bind::<Integer, _>(period_start_timestamp as i32)
-                            .bind::<Integer, _>(period_end_timestamp as i32);
-                    debug!(
-                        "process_statistics: total_over_period_query {}",
-                        debug_query::<Sqlite, _>(&total_over_period_query).to_string()
-                    );
-                    let total_count = match total_over_period_query.get_result::<Statistics>(&self.sql) {
-                        Ok(t) => t.count,
-                        Err(_) => 0,
-                    };
-                    debug!("process_statistics: period: {}, total_count: {}", period, total_count);
+                        // how many unique devices the device talked to over time period:
+                        let unique_over_period_query =
+                            sql_query("SELECT COUNT(DISTINCT(tgt_ip_id)) as count FROM network_event WHERE mac_id = ? AND ip_id = ? AND created >= ? AND created < ?")
+                                .bind::<Integer, _>(netgrasp_event_wrapper.source.mac.mac_id)
+                                .bind::<Integer, _>(netgrasp_event_wrapper.source.ip.ip_id)
+                                .bind::<Integer, _>(period_start_timestamp as i32)
+                                .bind::<Integer, _>(period_end_timestamp as i32);
+                        debug!(
+                            "process_statistics: unique_over_period_query 2 {}",
+                            debug_query::<Sqlite, _>(&unique_over_period_query).to_string()
+                        );
+                        let different_count = match unique_over_period_query.get_result::<Statistics>(&self.sql) {
+                            Ok(u) => u.count,
+                            Err(_) => 0,
+                        };
+                        debug!("process_statistics: period: {}, different_count: {}", period, different_count);
 
-                    // how many unique devices the device talked to over time period:
-                    let unique_over_period_query =
-                        sql_query("SELECT COUNT(DISTINCT(tgt_ip_id)) as count FROM network_event WHERE mac_id = ? AND ip_id = ? AND created >= ? AND created < ?")
-                            .bind::<Integer, _>(netgrasp_event_wrapper.source.mac.mac_id)
-                            .bind::<Integer, _>(netgrasp_event_wrapper.source.ip.ip_id)
-                            .bind::<Integer, _>(period_start_timestamp as i32)
-                            .bind::<Integer, _>(period_end_timestamp as i32);
-                    debug!(
-                        "process_statistics: unique_over_period_query 2 {}",
-                        debug_query::<Sqlite, _>(&unique_over_period_query).to_string()
-                    );
-                    let different_count = match unique_over_period_query.get_result::<Statistics>(&self.sql) {
-                        Ok(u) => u.count,
-                        Err(_) => 0,
-                    };
-                    debug!("process_statistics: period: {}, different_count: {}", period, different_count);
-
-                    let new_stats = NewStats {
-                        mac_id: netgrasp_event_wrapper.source.mac.mac_id,
-                        ip_id: netgrasp_event_wrapper.source.ip.ip_id,
-                        period_date: yyyymmdd,
-                        period_length: period_i64 as i32,
-                        period_number: period_number_start as i32,
-                        total: total_count,
-                        different: different_count,
-                        created: netgrasp_event_wrapper.timestamp,
-                        updated: netgrasp_event_wrapper.timestamp,
-                    };
-                    let stats_insert_query =
-                        diesel::insert_into(stats::table).values(&new_stats);
-                    debug!(
-                        "process_stats: stats_insert_query {}",
-                        debug_query::<Sqlite, _>(&stats_insert_query).to_string()
-                    );
-                    stats_insert_query
-                        .execute(&self.sql)
-                        .expect("Error adding stats");
+                        let new_stats = NewStats {
+                            mac_id: netgrasp_event_wrapper.source.mac.mac_id,
+                            ip_id: netgrasp_event_wrapper.source.ip.ip_id,
+                            period_date: yyyymmdd,
+                            period_length: period_i64 as i32,
+                            period_number: period_number_start as i32,
+                            total: total_count,
+                            different: different_count,
+                            created: netgrasp_event_wrapper.timestamp,
+                            updated: netgrasp_event_wrapper.timestamp,
+                        };
+                        let stats_insert_query =
+                            diesel::insert_into(stats::table).values(&new_stats);
+                        debug!(
+                            "process_stats: stats_insert_query {}",
+                            debug_query::<Sqlite, _>(&stats_insert_query).to_string()
+                        );
+                        stats_insert_query
+                            .execute(&self.sql)
+                            .expect("Error adding stats");
+                    }
                 }
             }
         }
