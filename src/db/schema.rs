@@ -58,6 +58,8 @@ table! {
         period_number -> Integer,
         total -> Integer,
         different -> Integer,
+        mean -> Float,
+        median -> Float,
         created -> Integer,
         updated -> Integer,
     }

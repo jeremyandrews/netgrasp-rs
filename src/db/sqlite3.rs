@@ -1,6 +1,6 @@
 use crate::db::models::*;
 use crate::notifications::templates;
-use crate::utils::{format, time};
+use crate::utils::{format, math, time};
 use diesel::prelude::*;
 use diesel::sql_types::{Integer, Text};
 use diesel::sqlite::Sqlite;
@@ -434,6 +434,7 @@ impl NetgraspDb {
         trace!("process_statistics: netgrasp_event_wrapper({:?})", netgrasp_event_wrapper);
         use chrono::prelude::*;
         use crate::db::schema::stats;
+        use crate::db::schema::network_event;
 
         // trends to watch
         // 1) how many times the device was seen over a period of time
@@ -528,6 +529,40 @@ impl NetgraspDb {
                         };
                         debug!("process_statistics: period: {}, different_count: {}", period, different_count);
 
+                        // how many unique devices the device talked to over time period:
+                        let load_timestamps_query = network_event::table
+                            .select(network_event::created)
+                            .filter(network_event::mac_id.eq(&netgrasp_event_wrapper.source.mac.mac_id))
+                            .filter(network_event::ip_id.eq(netgrasp_event_wrapper.source.ip.ip_id))
+                            .filter(network_event::created.ge(period_start_timestamp as i32))
+                            .filter(network_event::created.lt(period_end_timestamp as i32));
+                        debug!(
+                            "process_statistics: load_timestamps_query {}",
+                            debug_query::<Sqlite, _>(&load_timestamps_query).to_string()
+                        );
+                        let timestamps: Vec<i32> = match load_timestamps_query.get_results(&self.sql)
+                        {
+                            Ok(t) => t,
+                            Err(_) => vec![0]
+                        };
+                        let mut differences: Vec<i32> = vec![];
+                        let mut counter = 1;
+                        if timestamps.len() > 1 {
+                            let value: i32 = timestamps[0];
+                            while counter < timestamps.len() {
+                                differences.push(value - timestamps[counter]);
+                                counter += 1;
+                            }
+                        }
+                        else {
+                            differences.push(0);
+                        }
+
+                        let mean = math::mean(&differences);
+                        let median = math::median(&differences);
+
+                        debug!("process_statistics: period: {}, different_count: {} mean: {}, meadian: {}", period, different_count, mean, median);
+
                         let new_stats = NewStats {
                             mac_id: netgrasp_event_wrapper.source.mac.mac_id,
                             ip_id: netgrasp_event_wrapper.source.ip.ip_id,
@@ -536,6 +571,8 @@ impl NetgraspDb {
                             period_number: period_number_start as i32,
                             total: total_count,
                             different: different_count,
+                            mean: mean as f32,
+                            median: median as f32,
                             created: netgrasp_event_wrapper.timestamp,
                             updated: netgrasp_event_wrapper.timestamp,
                         };

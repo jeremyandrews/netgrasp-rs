@@ -108,6 +108,8 @@ pub struct Stats {
     pub period_number: i32,
     pub total: i32,
     pub different: i32,
+    pub mean: f32,
+    pub median: f32,
     pub created: i32,
     pub updated: i32,
 }
@@ -122,6 +124,8 @@ pub struct NewStats {
     pub period_number: i32,
     pub total: i32,
     pub different: i32,
+    pub mean: f32,
+    pub median: f32,
     pub created: i32,
     pub updated: i32,
 }

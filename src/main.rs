@@ -31,6 +31,7 @@ mod net {
 }
 mod utils {
     pub mod format;
+    pub mod math;
     pub mod statics;
     pub mod time;
 }
