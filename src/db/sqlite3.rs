@@ -535,7 +535,8 @@ impl NetgraspDb {
                             .filter(network_event::mac_id.eq(&netgrasp_event_wrapper.source.mac.mac_id))
                             .filter(network_event::ip_id.eq(netgrasp_event_wrapper.source.ip.ip_id))
                             .filter(network_event::created.ge(period_start_timestamp as i32))
-                            .filter(network_event::created.lt(period_end_timestamp as i32));
+                            .filter(network_event::created.lt(period_end_timestamp as i32))
+                            .order(network_event::created.asc());
                         debug!(
                             "process_statistics: load_timestamps_query {}",
                             debug_query::<Sqlite, _>(&load_timestamps_query).to_string()
@@ -548,9 +549,10 @@ impl NetgraspDb {
                         let mut differences: Vec<i32> = vec![];
                         let mut counter = 1;
                         if timestamps.len() > 1 {
-                            let value: i32 = timestamps[0];
+                            let mut value: i32 = timestamps[0];
                             while counter < timestamps.len() {
-                                differences.push(value - timestamps[counter]);
+                                differences.push(timestamps[counter] - value);
+                                value = timestamps[counter];
                                 counter += 1;
                             }
                         }
