@@ -139,7 +139,25 @@ pub fn time_ago(timestamp: u64, precision: bool) -> String {
                 };
             time_string
         }
-        7..=30 => {
+        7 => {
+            let time_string = format!("1 week ")
+                + match precision {
+                    true => {
+                        let remainder: u64 = (days % 7) / 60;
+                        match remainder {
+                            0 => "ago",
+                            1 => "1 day ago",
+                            _ => {
+                                remainder_string = format!("{} days ago", remainder);
+                                remainder_string.as_str()
+                            }
+                        }
+                    }
+                    false => "ago",
+                };
+            time_string
+        }
+        8..=30 => {
             let time_string = format!("{} weeks ", (days / 7) as u64)
                 + match precision {
                     true => {
