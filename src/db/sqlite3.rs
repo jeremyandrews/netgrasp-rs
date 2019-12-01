@@ -1181,7 +1181,7 @@ impl NetgraspDb {
                 .order(created.desc())
                 .limit(2);
             debug!(
-                "send_notification: previously_seen_query: {}",
+                "process_event: previously_seen_query: {}",
                 debug_query::<Sqlite, _>(&previously_seen_query).to_string()
             );
             // @TODO: what if only 1 is returned?
@@ -1212,7 +1212,7 @@ impl NetgraspDb {
                 .select(min_created)
                 .filter(ip_id.eq(&netgrasp_event_wrapper.network_event.ip_id));
             debug!(
-                "send_notification: first_seen_query: {}",
+                "process_event: first_seen_query: {}",
                 debug_query::<Sqlite, _>(&first_seen_query).to_string()
             );
             // convert i32 timestamp from SQLite into u64 for helpers
@@ -1229,7 +1229,7 @@ impl NetgraspDb {
                 .bind::<Integer, _>(&netgrasp_event_wrapper.network_event.ip_id)
                 .bind::<Integer, _>(time::elapsed(86400) as i32);
             debug!(
-                "send_notification: devices_talked_to_query: {}",
+                "process_event: devices_talked_to_query: {}",
                 debug_query::<Sqlite, _>(&devices_talked_to_count_query).to_string()
             );
             let devices_talked_to_count: TalkedToCount = match devices_talked_to_count_query.get_result::<TalkedToCount>(&self.sql) {
@@ -1250,7 +1250,7 @@ impl NetgraspDb {
                     .bind::<Integer, _>(time::elapsed(86400) as i32)
                     .bind::<Integer, _>(MAX_DEVICES_TO_LIST);
                 debug!(
-                    "send_notification: devices_talked_to_query: {}",
+                    "process_event: devices_talked_to_query: {}",
                     debug_query::<Sqlite, _>(&devices_talked_to_query).to_string()
                 );
                 let devices_talked_to: Vec<TalkedTo> = match devices_talked_to_query.load(&self.sql) {
