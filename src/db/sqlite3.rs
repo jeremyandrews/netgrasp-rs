@@ -1446,7 +1446,7 @@ impl NetgraspDb {
             debug!("process_event: notification({:?})", &notification);
             // @TODO this clearly needs to be configurable
             let server = "http://localhost:800";
-            match notification.send("http://localhost:8000", event_detail.priority, 0, None) {
+            match notification.send(&server, event_detail.priority, 0, None) {
                 Err(e) => error!("process_event: failed to send notification '{}': {:?}", &notification.title, e),
                 Ok(_) => info!("process_event: notification '{}' with priority {} sent to {}", &notification.title, event_detail.priority, &server),
             };
