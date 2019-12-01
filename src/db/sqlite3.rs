@@ -1443,7 +1443,7 @@ impl NetgraspDb {
             notification.set_short_html_template(html_template.clone());
             notification.set_long_text_template(text_template);
             notification.set_long_html_template(html_template);
-            debug!("notification: {:?}", notification);
+            info!("notification: {:?}", notification);
             match notification.send("http://localhost:8000", event_detail.priority, 0, None) {
                 Err(e) => error!("Error sending notification: {:?}", e),
                 Ok(_) => (),
@@ -1797,7 +1797,6 @@ impl NetgraspDb {
                     );
                     match netscan_event_query.get_result(&self.sql) {
                         Ok(i) => {
-                            //info!("detect_netscan: netscan of {}+ devices by {} ({}) [{}]", netscan.tgt_ip_id_count, &get_device_name(&netgrasp_event), &netgrasp_event.ip_address, &netgrasp_event.mac_address);
                             info!(
                                 "detect_netscan: netscan of {}+ devices",
                                 netscan.tgt_ip_id_count
@@ -1817,7 +1816,7 @@ impl NetgraspDb {
                             detected_netscan = true;
                         }
                         Err(e) => {
-                            info!(
+                            warn!(
                                 "detect_netscan: failed to load netscan event details: {}",
                                 e
                             );
