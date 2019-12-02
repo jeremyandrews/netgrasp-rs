@@ -1005,7 +1005,7 @@ impl NetgraspDb {
 
                 // if the hostname hasn't been updated in the past hour, perform a dns lookup
                 // @TODO respect DNS TTL
-                if i.updated > (time::elapsed(3600) as i32) {
+                if i.updated < (time::timestamp_now as i32 - 3600) {
                     let addr: std::net::IpAddr = match ip_address.parse() {
                         Ok(i) => i,
                         Err(e) => {
@@ -1448,7 +1448,7 @@ impl NetgraspDb {
             let server = "http://localhost:8000";
             match notification.send(&server, event_detail.priority, 0, None) {
                 Err(e) => error!("process_event: failed to send notification '{}' with priority {}: {:?}", &notification.title, event_detail.priority, e),
-                Ok(_) => info!("process_event: notification '{}' with priority {} sent to {}", &notification.title, event_detail.priority, &server),
+                Ok(_) => info!("process_event: succesfully sent notification '{}' with priority {} to {}", &notification.title, event_detail.priority, &server),
             };
         }
     }
