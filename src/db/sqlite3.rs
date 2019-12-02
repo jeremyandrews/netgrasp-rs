@@ -352,13 +352,13 @@ impl NetgraspDb {
 
     fn establish_sqlite_connection(sqlite_database_path: &str) -> SqliteConnection {
         info!(
-            "establishing connection to SQLite database: [{}]",
+            "establish_sqlite_connection: connecting to SQLite database: {}",
             sqlite_database_path
         );
         let sql_connection = match SqliteConnection::establish(sqlite_database_path) {
             Ok(c) => c,
             Err(e) => {
-                error!("Failed to establish SQLite connection: [{}]", e);
+                error!("establish_sqlite_connection: unable to establish SQLite connection: {}", e);
                 std::process::exit(1);
             }
         };
@@ -367,13 +367,13 @@ impl NetgraspDb {
 
     fn establish_oui_connection(oui_database_path: &str) -> OuiDatabase {
         info!(
-            "establishing connection to OUI database: [{}]",
+            "establish_oui_connection: connecting to OUI database: {}",
             oui_database_path
         );
         let oui_connection = match OuiDatabase::new_from_file(oui_database_path) {
             Ok(c) => c,
             Err(e) => {
-                error!("Failed to establish OUI database connection: [{}]", e);
+                error!("establish_oui_connection: unable to establish OUI database connection: {}", e);
                 std::process::exit(1);
             }
         };
@@ -410,7 +410,7 @@ impl NetgraspDb {
         netgrasp_event_wrapper.network_event.tgt_ip_id = netgrasp_event_wrapper.target.ip.ip_id;
         netgrasp_event_wrapper.network_event.created = netgrasp_event_wrapper.timestamp;
         netgrasp_event_wrapper.network_event.updated = netgrasp_event_wrapper.timestamp;
-        debug!("netgrasp_event_wrapper: {:?}", netgrasp_event_wrapper);
+        debug!("record_network_event: netgrasp_event_wrapper({:?})", netgrasp_event_wrapper);
 
         let network_event_insert_query =
             diesel::insert_into(network_event::table).values(&netgrasp_event_wrapper.network_event);
@@ -474,7 +474,7 @@ impl NetgraspDb {
                 let period_number_start = (period_start_timestamp - period_day_start.timestamp()) / period_i64;
                 let yyyymmdd: i32 = period_start.format("%Y%m%d").to_string().parse::<i32>().unwrap();
 
-                debug!("today_start: {}, period_number_start: {}, period_number_end: {}", today_start.timestamp(), period_number_start, period_number_end);
+                debug!("process_statistics: today_start: {}, period_number_start: {}, period_number_end: {}", today_start.timestamp(), period_number_start, period_number_end);
 
                 let total_count =
                     diesel::dsl::sql::<diesel::sql_types::Integer>("total AS count");
@@ -581,7 +581,7 @@ impl NetgraspDb {
                         let stats_insert_query =
                             diesel::insert_into(stats::table).values(&new_stats);
                         debug!(
-                            "process_stats: stats_insert_query {}",
+                            "process_statistics: stats_insert_query {}",
                             debug_query::<Sqlite, _>(&stats_insert_query).to_string()
                         );
                         stats_insert_query
@@ -608,7 +608,7 @@ impl NetgraspDb {
         );
 
         debug!(
-            "processing source ip({}) mac({})",
+            "process_arp_packet: source ip({}) mac({})",
             arp_packet.src_ip, arp_packet.src_mac
         );
         // Process the arp source MAC
@@ -631,7 +631,7 @@ impl NetgraspDb {
         }
 
         debug!(
-            "processing target ip({}) mac({})",
+            "process_arp_packet: target ip({}) mac({})",
             arp_packet.tgt_ip, arp_packet.tgt_mac
         );
         // Process the arp target MAC
@@ -688,7 +688,7 @@ impl NetgraspDb {
             }
             // Otherwise this is the first time we've seen activity on this interface.
             Err(_) => {
-                info!("new interface({})", &interface);
+                info!("process_interface: new interface({})", &interface);
                 netgrasp_event_wrapper
                     .events
                     .push(NetgraspEventType::InterfaceFirstSeen);
@@ -747,7 +747,7 @@ impl NetgraspDb {
 
         let mac_query = mac::table.filter(mac::address.eq(mac_address));
         debug!(
-            "load_mac_id: {}",
+            "process_mac: mac_query: {}",
             debug_query::<Sqlite, _>(&mac_query).to_string()
         );
         match mac_query.get_result::<Mac>(&self.sql) {
@@ -766,7 +766,7 @@ impl NetgraspDb {
             // Otherwise this is the first time we've seen this vendor.
             Err(_) => {
                 // If this mac address doesn't exist, add it.
-                info!("new mac_address({})", mac_address);
+                info!("process_mac: new mac_address({})", mac_address);
                 netgrasp_event_wrapper
                     .events
                     .push(NetgraspEventType::MacFirstSeen);
@@ -781,7 +781,7 @@ impl NetgraspDb {
                 };
                 let mac_insert_query = diesel::insert_into(mac::table).values(&new_mac);
                 debug!(
-                    "process_mac: insert {}",
+                    "process_mac: mac_insert_query {}",
                     debug_query::<Sqlite, _>(&mac_insert_query).to_string()
                 );
                 mac_insert_query
@@ -825,7 +825,7 @@ impl NetgraspDb {
                 // @TODO: Review these, perhaps perform a remote API call as a backup?
                 vendor_name = "unknown".to_string();
                 vendor_full_name = "unknown".to_string();
-                debug!("no vendor found for mac_address({})", mac_address);
+                debug!("process_vendor: no vendor found for mac_address({})", mac_address);
             }
         }
 
@@ -833,7 +833,7 @@ impl NetgraspDb {
             .filter(vendor::name.eq(&vendor_name))
             .filter(vendor::full_name.eq(&vendor_full_name));
         debug!(
-            "load_vendor_id: {}",
+            "process_vendor: vendor_query: {}",
             debug_query::<Sqlite, _>(&vendor_query).to_string()
         );
         match vendor_query.get_result::<Vendor>(&self.sql) {
@@ -851,7 +851,7 @@ impl NetgraspDb {
             }
             // Otherwise this is the first time we've seen this vendor.
             Err(_) => {
-                info!("new vendor({} [{}])", &vendor_full_name, &vendor_name);
+                info!("process_vendor: new vendor({} [{}])", &vendor_full_name, &vendor_name);
 
                 netgrasp_event_wrapper
                     .events
@@ -865,13 +865,13 @@ impl NetgraspDb {
                 };
                 let insert_vendor_query = diesel::insert_into(vendor::table).values(&new_vendor);
                 debug!(
-                    "load_vendor_id: insert new vendor: {}",
+                    "process_vendor: insert_vendor_query: insert new vendor: {}",
                     debug_query::<Sqlite, _>(&insert_vendor_query).to_string()
                 );
                 match insert_vendor_query.execute(&self.sql) {
                     Ok(_) => (),
                     Err(e) => {
-                        error!("Error inserting vendor into database: [{}]", e);
+                        error!("process_vendor: unable to insert vendor into database: {}", e);
                         // We have to exit or we'll get into an infinite loop.
                         std::process::exit(1);
                     }
@@ -914,7 +914,7 @@ impl NetgraspDb {
             }
             let load_ip_id_query = ip.filter(address.eq(ip_address));
             debug!(
-                "process_ip: load_ip_id_query get mac_id {}",
+                "process_ip: load_ip_id_query 1 {}",
                 debug_query::<Sqlite, _>(&load_ip_id_query).to_string()
             );
             loaded_ip_id = load_ip_id_query.get_result::<Ip>(&self.sql);
@@ -959,7 +959,7 @@ impl NetgraspDb {
                             Err(e) => {
                                 // Unexecpted error, exit to avoid an infinite loop.
                                 // @TODO graceful error handling?
-                                error!("Error updating ip table: [{}]", e);
+                                error!("process_ip:  unable to update ip table: {}", e);
                                 std::process::exit(1);
                             }
                             Ok(_) => (),
@@ -1009,7 +1009,7 @@ impl NetgraspDb {
                     let addr: std::net::IpAddr = match ip_address.parse() {
                         Ok(i) => i,
                         Err(e) => {
-                            error!("Error parsing ip_address {}: [{}]", &ip_address, e);
+                            error!("process_ip: unable to parse ip_address({}): {}", &ip_address, e);
                             // @TODO: how should we handle this gracefully?
                             return netgrasp_event_wrapper;
                         }
@@ -1018,7 +1018,7 @@ impl NetgraspDb {
                         Ok(h) => h,
                         Err(e) => {
                             warn!(
-                                "Failed to look up host_name for ip_address {}: [{}]",
+                                "process_ip: unable to look up host_name for ip_address({}): {}",
                                 &ip_address, e
                             );
                             "unknown".to_string()
@@ -1072,7 +1072,7 @@ impl NetgraspDb {
                 let addr: std::net::IpAddr = match ip_address.parse() {
                     Ok(i) => i,
                     Err(e) => {
-                        error!("Error parsing ip_address {}: [{}]", &ip_address, e);
+                        error!("process_ip: unable to parse ip_address({}): {}", &ip_address, e);
                         // @TODO: how should we handle this gracefully?
                         return netgrasp_event_wrapper;
                     }
@@ -1081,7 +1081,7 @@ impl NetgraspDb {
                     Ok(h) => h,
                     Err(e) => {
                         warn!(
-                            "Failed to look up host_name for ip_address {}: [{}]",
+                            "process_ip: unable to look up host_name for ip_address({}): {}",
                             &ip_address, e
                         );
                         "unknown".to_string()
@@ -1089,7 +1089,7 @@ impl NetgraspDb {
                 };
 
                 info!(
-                    "new ip({}) hostname({}) with mac({})",
+                    "process_ip: new ip({}) hostname({}) with mac({})",
                     &ip_address, &hostname, &wrapper_mac
                 );
                 let new_ip = NewIp {
@@ -1102,13 +1102,13 @@ impl NetgraspDb {
                 };
                 let insert_ip_query = diesel::insert_into(ip).values(&new_ip);
                 debug!(
-                    "load_ip_id: insert_ip_query {}",
+                    "process_ip: insert_ip_query {}",
                     debug_query::<Sqlite, _>(&insert_ip_query).to_string()
                 );
                 match insert_ip_query.execute(&self.sql) {
                     Ok(_) => (),
                     Err(e) => {
-                        error!("Error inserting ip into database: [{}]", e);
+                        error!("parse_ip: unable to insert ip into database: {}", e);
                         // exit to avoid an infinte loop
                         // @TODO: handle this gracefully?
                         std::process::exit(1);
@@ -1235,7 +1235,7 @@ impl NetgraspDb {
             let devices_talked_to_count: TalkedToCount = match devices_talked_to_count_query.get_result::<TalkedToCount>(&self.sql) {
                 Ok(count) => count,
                 Err(e) => {
-                    warn!("process_event; devices_talked_to_count_query error: {}", e);
+                    warn!("process_event: devices_talked_to_count_query error: {}", e);
                     TalkedToCount {
                         counter: 0
                     }
@@ -1256,7 +1256,7 @@ impl NetgraspDb {
                 let devices_talked_to: Vec<TalkedTo> = match devices_talked_to_query.load(&self.sql) {
                     Ok(talked_to) => talked_to,
                     Err(e) => {
-                        warn!("process_event; devices_talked_to_query error: {}", e);
+                        warn!("process_event: devices_talked_to_query error: {}", e);
                         vec![TalkedTo {
                             tgt_mac_id: 0,
                             tgt_ip_id: netgrasp_event_wrapper.source.ip.ip_id,
@@ -1309,7 +1309,7 @@ impl NetgraspDb {
                         Ok(m) => m,
                         Err(e) => {
                             // if tgt_mac_id is 0 we'll default to "unknown"
-                            debug!("process_event; mac_query error: {}", e);
+                            debug!("process_event: mac_query error: {}", e);
                             MacDetail {
                                 address: "unknown".to_string(),
                                 full_name: "unknown".to_string(),
@@ -1447,7 +1447,7 @@ impl NetgraspDb {
             // @TODO this clearly needs to be configurable
             let server = "http://localhost:8000";
             match notification.send(&server, event_detail.priority, 0, None) {
-                Err(e) => error!("process_event: failed to send notification '{}': {:?}", &notification.title, e),
+                Err(e) => error!("process_event: failed to send notification '{}' with priority {}: {:?}", &notification.title, event_detail.priority, e),
                 Ok(_) => info!("process_event: notification '{}' with priority {} sent to {}", &notification.title, event_detail.priority, &server),
             };
         }
@@ -1496,7 +1496,7 @@ impl NetgraspDb {
         {
             Ok(a) => a,
             Err(e) => {
-                error!("Error loading active devices: [{}]", e);
+                error!("get_active_devices: failed to load active devices: {}", e);
                 vec![NetgraspActiveDevice::default()]
             }
         };
