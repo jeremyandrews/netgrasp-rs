@@ -1037,6 +1037,7 @@ impl NetgraspDb {
                         // successfully updated ip object
                         Ok(_) => {
                             if i.host_name != hostname {
+                                info!("process_ip: hostname for {} ({}) changed from '{}' to '{}'", &i.address, i.ip_id, &i.host_name, &hostname);
                                 i.host_name = hostname;
                                 netgrasp_event_wrapper
                                     .events
