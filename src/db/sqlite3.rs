@@ -1391,14 +1391,15 @@ impl NetgraspDb {
                 devices_talked_to_count_string
             );
 
-            let mut debug_messages: Vec<String> = vec![];
+            let mut debug_messages: Vec<String> = vec!["date, length, period, total, different, mean, median".to_string()];
             if self.debug_in_notifications {
                 let debug_stats_query = stats::table
                     .select((stats::period_date, stats::period_length, stats::period_number, stats::total, stats::different, stats::mean, stats::median))
                     .filter(stats::ip_id.eq(&netgrasp_event_wrapper.network_event.ip_id))
                     .filter(stats::mac_id.eq(&netgrasp_event_wrapper.network_event.mac_id))
-                    // @TODO limit how many we retreive
-                    .order((stats::period_date.asc(), stats::period_length.asc(), stats::period_number.asc()));
+                    // @TODO: for now we include all stats from the past 5 days
+                    .filter(stats::created.ge(time::timestamp_now() as i32 - 86400 * 5))
+                    .order((stats::period_length.desc(), stats::period_date.asc(), stats::period_number.asc()));
                 debug!(
                     "process_event: debug_stats_query: {}",
                     debug_query::<Sqlite, _>(&debug_stats_query).to_string()
