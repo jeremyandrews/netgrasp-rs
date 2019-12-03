@@ -2,8 +2,7 @@ pub const NETGRASP_TITLE_TEMPLATE: &str = "[netgrasp] {{event}}: {{name}}";
 
 pub const NETGRASP_TEXT_TEMPLATE: &str = "{{notification}}:
  * {{name}} {{vendor}}
- * ip: {{ip}} [{{mac}}]
- * interface: {{interface}}
+ * {{interface}}: {{ip}} [{{mac}}]
  * previously seen: {{previously_seen}}
  * first seen: {{first_seen}}
  * recently seen: {{recently_seen}}
@@ -34,8 +33,7 @@ pub const NETGRASP_HTML_TEMPLATE: &str = r#"
 <BODY>
   <P>{{notification}}:<UL>
     <LI>{{name}} <EM>{{vendor}}</EM>
-    <LI>address: {{interface}} - {{ip}} [{{mac}}]</LI>
-    <LI>interface: {{interface}}</LI>
+    <LI>{{interface}}: {{ip}} [{{mac}}]</LI>
     <LI>previously seen: {{previously_seen}}</LI>
     <LI>first seen: {{first_seen}}</LI>
     <LI>recently seen: {{recently_seen}}</LI>
