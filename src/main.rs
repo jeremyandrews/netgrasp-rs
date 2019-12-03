@@ -124,6 +124,11 @@ fn main() {
                 .multiple(true)
                 .help("Sets the output level of verbosity"),
         )
+        .arg(
+            Arg::with_name("debug")
+                .long("debug")
+                .help("Include debug information in notifications"),
+        )
         .get_matches();
 
     // Allow optionally controlling debug output level
@@ -132,7 +137,7 @@ fn main() {
         0 => debug_level = LevelFilter::Warn,
         1 => debug_level = LevelFilter::Info,
         2 => debug_level = LevelFilter::Debug,
-        3 | _ => debug_level = LevelFilter::Trace,
+        _ => debug_level = LevelFilter::Trace,
     }
 
     let log_level;
@@ -140,7 +145,7 @@ fn main() {
         0 => log_level = LevelFilter::Warn,
         1 => log_level = LevelFilter::Info,
         2 => log_level = LevelFilter::Debug,
-        3 | _ => log_level = LevelFilter::Trace,
+        _ => log_level = LevelFilter::Trace,
     }
 
     let mut log_file;
@@ -170,6 +175,16 @@ fn main() {
     info!("Logfile verbosity level: {}", log_level);
     info!("Writing to log file: {}", log_file.display());
     debug!("Available interfaces: {:?}", interfaces);
+
+    let debug_in_notifications: bool;
+    if matches.is_present("debug") {
+        debug_in_notifications = true;
+        info!("Debug enabled in notifications.");
+    }
+    else {
+        debug_in_notifications = false;
+    }
+
 
     let configuration_directory = utils::statics::PROJECT_DIRS.config_dir();
     debug!("Configuration path: {}", configuration_directory.display());
@@ -227,6 +242,7 @@ fn main() {
         path_to_db.to_string(),
         path_to_oui_db.to_string(),
         min_priority,
+        debug_in_notifications,
     );
     info!("Using SQLite3 database file: {}", path_to_db);
     let response = netgrasp_db.migrate();

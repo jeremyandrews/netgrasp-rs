@@ -2,7 +2,7 @@ use crate::db::models::*;
 use crate::notifications::templates;
 use crate::utils::{format, math, time};
 use diesel::prelude::*;
-use diesel::sql_types::{Integer, Text};
+use diesel::sql_types::{Integer, Float, Text};
 use diesel::sqlite::Sqlite;
 use diesel::{debug_query, sql_query};
 use diesel_migrations::{run_pending_migrations, RunMigrationsError};
@@ -68,6 +68,7 @@ pub struct NetgraspDb {
     sql: SqliteConnection,
     oui: OuiDatabase,
     minimum_priority: u8,
+    debug_in_notifications: bool,
 }
 
 #[derive(Debug, Default, Queryable)]
@@ -104,6 +105,24 @@ pub struct TalkedToCount {
 pub struct Statistics {
     #[sql_type = "Integer"]
     pub count: i32,
+}
+
+#[derive(Debug, Default, PartialEq, Queryable, QueryableByName, Serialize)]
+pub struct DebugStats {
+    #[sql_type = "Integer"]
+    pub period_date: i32,
+    #[sql_type = "Integer"]
+    pub period_length: i32,
+    #[sql_type = "Integer"]
+    pub period_number: i32,
+    #[sql_type = "Integer"]
+    pub total: i32,
+    #[sql_type = "Integer"]
+    pub different: i32,
+    #[sql_type = "Float"]
+    pub mean: f32,
+    #[sql_type = "Float"]
+    pub median: f32,
 }
 
 #[derive(Debug, Default, PartialEq, Queryable, QueryableByName, Serialize)]
@@ -342,11 +361,12 @@ fn name_or_unknown(name: &str) -> String {
 }
 
 impl NetgraspDb {
-    pub fn new(sql_database_path: String, oui_database_path: String, minimum_priority: u8) -> Self {
+    pub fn new(sql_database_path: String, oui_database_path: String, minimum_priority: u8, debug_in_notifications: bool) -> Self {
         NetgraspDb {
             sql: NetgraspDb::establish_sqlite_connection(&sql_database_path),
             oui: NetgraspDb::establish_oui_connection(&oui_database_path),
             minimum_priority: minimum_priority,
+            debug_in_notifications: debug_in_notifications,
         }
     }
 
@@ -1134,6 +1154,7 @@ impl NetgraspDb {
         use crate::db::schema::mac;
         use crate::db::schema::network_event::dsl::*;
         use crate::db::schema::vendor;
+        use crate::db::schema::stats;
         use std::convert::TryInto;
 
         let event_detail = netgrasp_event_detail(netgrasp_event_type);
@@ -1370,6 +1391,30 @@ impl NetgraspDb {
                 devices_talked_to_count_string
             );
 
+            let mut debug_messages: Vec<String> = vec![];
+            if self.debug_in_notifications {
+                let debug_stats_query = stats::table
+                    .select((stats::period_date, stats::period_length, stats::period_number, stats::total, stats::different, stats::mean, stats::median))
+                    .filter(stats::ip_id.eq(&netgrasp_event_wrapper.network_event.ip_id))
+                    .filter(stats::mac_id.eq(&netgrasp_event_wrapper.network_event.mac_id))
+                    // @TODO limit how many we retreive
+                    .order((stats::period_date.asc(), stats::period_length.asc(), stats::period_number.asc()));
+                debug!(
+                    "process_event: debug_stats_query: {}",
+                    debug_query::<Sqlite, _>(&debug_stats_query).to_string()
+                );
+                let debug_stats: Vec<DebugStats> = match debug_stats_query.get_results(&self.sql) {
+                    Ok(m) => m,
+                    Err(e) => {
+                        debug!("process_event: debug_stats_query error: {}", e);
+                        vec![]
+                    }
+                };
+                for stat in debug_stats {
+                    debug_messages.push(format!("{}, {}, {}, {}, {}, {}, {}", stat.period_date, stat.period_length, stat.period_number, stat.total, stat.different, stat.mean, stat.median));
+                }
+            }
+
             let mut notification = Notification::init("Netgrasp", "", &event_detail.description);
             notification.add_value("event".to_string(), event_detail.name);
             notification.add_value(
@@ -1427,9 +1472,11 @@ impl NetgraspDb {
             // add block for devices talked to
             let text_inner_template: String;
             let html_inner_template: String;
-            if devices_talked_to_count.counter > 0 {
-                text_inner_template = text_template + templates::NETGRASP_TEXT_TALKED_TO_TEMPLATE;
-                html_inner_template = html_template + templates::NETGRASP_HTML_TALKED_TO_TEMPLATE;
+            if self.debug_in_notifications {
+                text_inner_template = text_template + templates::NETGRASP_TEXT_DEBUG_TEMPLATE;
+                html_inner_template = html_template + templates::NETGRASP_HTML_DEBUG_TEMPLATE;
+                notification
+                    .add_serde_json_value("debug_messages".to_string(), to_json(&debug_messages));
             }
             else {
                 text_inner_template = text_template;

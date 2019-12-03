@@ -6,14 +6,20 @@ pub const NETGRASP_TEXT_TEMPLATE: &str = "{{notification}}:
  * interface: {{interface}}
  * previously seen: {{previously_seen}}
  * first seen: {{first_seen}}
- * recently seen: {{recently_seen}}";
-
-pub const NETGRASP_TEXT_TALKED_TO_TEMPLATE: &str = "
+ * recently seen: {{recently_seen}}
 
 In the past 24 hours, this device talked to {{devices_talked_to_count_string}}:
 {{#each devices_talked_to as |device| ~}}
  * {{device.name}} [{{device.count_string}}]
 {{/each~}}";
+
+pub const NETGRASP_TEXT_DEBUG_TEMPLATE: &str = "
+
+Debug:
+{{#each debug_messages as |debug| ~}}
+ * {{debug}}
+{{/each~}}
+";
 
 pub const NETGRASP_TEXT_FOOTER_TEMPLATE: &str = "
 
@@ -28,16 +34,21 @@ pub const NETGRASP_HTML_TEMPLATE: &str = r#"
 <BODY>
   <P>{{notification}}:<UL>
     <LI>{{name}} <EM>{{vendor}}</EM>
-    <LI>ip: {{ip}} [{{mac}}]</LI>
+    <LI>address: {{interface}} - {{ip}} [{{mac}}]</LI>
     <LI>interface: {{interface}}</LI>
     <LI>previously seen: {{previously_seen}}</LI>
     <LI>first seen: {{first_seen}}</LI>
     <LI>recently seen: {{recently_seen}}</LI>
-  </UL></p>"#;
-
-pub const NETGRASP_HTML_TALKED_TO_TEMPLATE: &str = r#"
+  </UL></p>
   <P>In the past 24 hours, this device talked to {{devices_talked_to_count_string}}:<UL>
     {{#each devices_talked_to as |device| ~}}<LI>{{device.name}} [{{device.count_string}}]</LI>{{/each~}}
+  </UL></P>
+"#;
+
+pub const NETGRASP_HTML_DEBUG_TEMPLATE: &str = r#"
+  <P>Debug:<UL>
+    {{#each debug_messages as |debug| ~}}<LI>{{debug}}</LI>{{/each~}}
+  {{debug}}
   </UL></P>
 "#;
 
