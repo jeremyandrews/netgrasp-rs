@@ -1,19 +1,122 @@
-#[macro_use]
-extern crate log;
+use clap::Parser;
+use figment::{
+    providers::{Env, Format, Serialized, Toml},
+    Figment,
+};
+use mac_oui::Oui;
+use serde::{Deserialize, Serialize};
+use tokio::sync::mpsc;
 
-#[macro_use]
-extern crate clap;
+mod arp;
 
-#[macro_use]
-extern crate lazy_static;
+#[derive(Clone, Debug, Parser, Serialize, Deserialize)]
+struct Config {
+    /// Interface(s) to listen on
+    #[arg(short, long, value_delimiter = ',', value_name = "INT1,INT2,...")]
+    interfaces: Vec<String>,
+}
 
-#[macro_use]
-extern crate diesel;
+#[tokio::main]
+async fn main() {
+    // Start with toml configuration file.
+    let config: Config = Figment::from(Toml::file("netgrasp.toml"))
+        // Override with anything set in environment variables.
+        .merge(Env::prefixed("NETGRASP_"))
+        // Override with anything set via flags.
+        .merge(Serialized::defaults(Config::parse()))
+        .extract()
+        .unwrap();
 
-#[macro_use]
-extern crate serde_derive;
+    // Interfaces must be configurex (typically in `netgrasp.toml` or NETGRASP_INTERFACES.)
+    if config.interfaces.is_empty() {
+        println!("\nAvailable interfaces: {}", list_interfaces().join(", "));
+        println!("Usage: netgrasp --interfaces <INTERFACE1,INTERFACE2,...>\n");
+        std::process::exit(1);
+    }
 
-use clap::{App, Arg};
+    // Validate that only valid interfaces are being monitored.
+    for interface in &config.interfaces {
+        if !list_interfaces().contains(interface) {
+            eprintln!("\nInvalid interface: {}", interface);
+            println!("Available interfaces: {}", list_interfaces().join(", "));
+            println!("Usage: netgrasp --interfaces <INTERFACE1,INTERFACE2,...>\n");
+            std::process::exit(2);
+        }
+    }
+
+    let oui_db = match Oui::default() {
+        Ok(s) => s,
+        Err(e) => {
+            println!("Oui error: {}", e);
+            std::process::exit(1)
+        }
+    };
+
+    // Listen on configured interfaces.
+    let (arp_tx, mut arp_rx) = mpsc::channel(2048);
+    for interface in config.interfaces {
+        let interface_arp_tx = arp_tx.clone();
+        tokio::spawn(async move {
+            arp::listen(interface.clone(), interface_arp_tx).await;
+        });
+    }
+
+    loop {
+        // Check for ARP packets at least 10 times a second.
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        while let Ok(arp_packet) = arp_rx.try_recv() {
+            // @TODO: Only do lookup if not already known.
+            let source = map_mac_to_owner(
+                &oui_db,
+                arp_packet.arp_message.source_hardware_address.to_string(),
+            );
+            let target = map_mac_to_owner(
+                &oui_db,
+                arp_packet.arp_message.target_hardware_address.to_string(),
+            );
+
+            println!(
+                "{}: {} ({}) to {} ({}) ",
+                arp_packet.ifname,
+                arp_packet.arp_message.source_protocol_address,
+                source,
+                arp_packet.arp_message.target_protocol_address,
+                target,
+            );
+        }
+    }
+}
+
+// List all interfaces.
+fn list_interfaces() -> Vec<String> {
+    let mut ifaces: Vec<String> = Vec::new();
+    for iface in if_addrs::get_if_addrs().unwrap() {
+        ifaces.push(iface.name);
+    }
+    ifaces.sort();
+    ifaces.dedup();
+    ifaces
+}
+
+// Map MAC to owner.
+fn map_mac_to_owner(oui_db: &Oui, mac_address: String) -> String {
+    let oui_lookup = oui_db.lookup_by_mac(&mac_address);
+    match oui_lookup {
+        Ok(r) => {
+            if let Some(rec) = r {
+                rec.company_name.to_string()
+            } else {
+                mac_address
+            }
+        }
+        Err(e) => {
+            println!("OUI lookup error: {}", e);
+            mac_address
+        }
+    }
+}
+
+/*
 use simplelog::*;
 use std::fs;
 use std::fs::File;
@@ -305,3 +408,4 @@ fn main() {
         }
     }
 }
+*/
