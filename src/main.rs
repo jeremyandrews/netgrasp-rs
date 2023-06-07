@@ -1,4 +1,5 @@
 use clap::Parser;
+use dns_lookup::lookup_addr;
 use figment::{
     providers::{Env, Format, Serialized, Toml},
     Figment,
@@ -6,6 +7,8 @@ use figment::{
 use mac_oui::Oui;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
+
+use std::net::{IpAddr, Ipv4Addr};
 
 mod arp;
 
@@ -44,6 +47,9 @@ async fn main() {
         }
     }
 
+    // Load the Oui database for MAC address lookups.
+    // @TODO: support configurable path to load `from_csv_file`.
+    // https://docs.rs/mac_oui/latest/mac_oui/struct.Oui.html#method.from_csv_file
     let oui_db = match Oui::default() {
         Ok(s) => s,
         Err(e) => {
@@ -65,23 +71,25 @@ async fn main() {
         // Check for ARP packets at least 10 times a second.
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         while let Ok(arp_packet) = arp_rx.try_recv() {
-            // @TODO: Only do lookup if not already known.
-            let source = map_mac_to_owner(
+            // @TODO: Only do MAC lookup if not already known.
+            let source_hardware = map_mac_to_owner(
                 &oui_db,
                 arp_packet.arp_message.source_hardware_address.to_string(),
             );
-            let target = map_mac_to_owner(
+            let target_hardware = map_mac_to_owner(
                 &oui_db,
                 arp_packet.arp_message.target_hardware_address.to_string(),
             );
 
+            // @TODO: Only do DNS lookup if not already known.
+            let source_address =
+                map_ip_to_hostname(&arp_packet.arp_message.source_protocol_address);
+            let target_address =
+                map_ip_to_hostname(&arp_packet.arp_message.target_protocol_address);
+
             println!(
                 "{}: {} ({}) to {} ({}) ",
-                arp_packet.ifname,
-                arp_packet.arp_message.source_protocol_address,
-                source,
-                arp_packet.arp_message.target_protocol_address,
-                target,
+                arp_packet.ifname, source_address, source_hardware, target_address, target_hardware,
             );
         }
     }
@@ -112,6 +120,18 @@ fn map_mac_to_owner(oui_db: &Oui, mac_address: String) -> String {
         Err(e) => {
             println!("OUI lookup error: {}", e);
             mac_address
+        }
+    }
+}
+
+// Map IPv4 address to hostname.
+// @TODO: Also support IPv6.
+fn map_ip_to_hostname(ip_address: &Ipv4Addr) -> String {
+    match lookup_addr(&IpAddr::V4(*ip_address)) {
+        Ok(a) => a.to_string(),
+        Err(_) => {
+            // No hostname, return IP address.
+            ip_address.to_string()
         }
     }
 }
