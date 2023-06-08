@@ -5,3 +5,4 @@ Cargo.lock
 *.log
 *.db
 /data/*
+migration/target
