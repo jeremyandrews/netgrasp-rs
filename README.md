@@ -2,16 +2,17 @@
 
 A network observation tool.
 
-## Details
+## Overview
+
+Netgrasp monitors Arp traffic, performing MAC and reverse-DNS lookups to detect devices.
 
 * Leverages [arp-toolkit](https://crates.io/crates/arp-toolkit) to monitor network interfaces for ARP packets.
 * Leverages [clap](https://crates.io/crates/clap) and [figment](https://crates.io/crates/figment) to provide flexible configuration.
+* Leverages [dns-lookup](https://crates.io/crates/dns-lookup/) to perform reverse DNS lookups.
 * Leverages [if_addrs](https://crates.io/crates/if_addrs) to validate network interfaces.
 * Leverages [mac_oui](https://crates.io/crates/mac_oui) to perform vendor lookups of MAC addresses.
 
 
-* Leverages [dns-lookup](https://crates.io/crates/dns-lookup/) to perform reverse DNS lookups.
-* Leverages [reqwest](https://crates.io/crates/reqwest) to automatically download Wireshark OUI database.
 * Leverages [simplelog](https://lib.rs/crates/simplelog) to provide logging to stdout and files.
 
 ## TODO
