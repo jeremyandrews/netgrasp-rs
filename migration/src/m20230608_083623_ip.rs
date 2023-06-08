@@ -9,22 +9,28 @@ impl MigrationTrait for Migration {
         manager
             .create_table(
                 Table::create()
-                    .table(Mac::Table)
+                    .table(Ip::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(Mac::MacId)
+                        ColumnDef::new(Ip::IpId)
                             .integer()
                             .not_null()
                             .auto_increment()
                             .primary_key(),
                     )
                     .col(
-                        ColumnDef::new(Mac::Created)
+                        ColumnDef::new(Ip::Created)
                             .timestamp()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(Mac::HardwareAddress).string().not_null())
-                    .col(ColumnDef::new(Mac::ProtocolAddress).string().not_null())
+                    .col(
+                        ColumnDef::new(Ip::Updated)
+                            .timestamp()
+                            .not_null(),
+                    )
+                    .col(ColumnDef::new(Ip::Interface).string().not_null())
+                    .col(ColumnDef::new(Ip::Address).string().not_null())
+                    .col(ColumnDef::new(Ip::Name).string().not_null())
                     .to_owned(),
             )
             .await?;
@@ -33,22 +39,22 @@ impl MigrationTrait for Migration {
             .create_index(
                 Index::create()
                     .if_not_exists()
-                    .name("idx-mac-hardware")
+                    .name("idx-ip-interface-address")
                     .unique()
-                    .table(Mac::Table)
-                    .col(Mac::HardwareAddress)                        
+                    .table(Ip::Table)
+                    .col(Ip::Interface)                        
+                    .col(Ip::Address)                        
                     .to_owned(),
             )
             .await?;
-    
+
             manager
             .create_index(
                 Index::create()
                     .if_not_exists()
-                    .name("idx-mac-protocol-hardware")
-                    .table(Mac::Table)
-                    .col(Mac::ProtocolAddress)                        
-                    .col(Mac::HardwareAddress)                        
+                    .name("idx-ip-name")
+                    .table(Ip::Table)
+                    .col(Ip::Name)                        
                     .to_owned(),
             )
             .await
@@ -56,16 +62,19 @@ impl MigrationTrait for Migration {
 
     async fn down(&self, manager: &SchemaManager) -> Result<(), DbErr> {
         manager
-            .drop_table(Table::drop().table(Mac::Table).to_owned())
+            .drop_table(Table::drop().table(Ip::Table).to_owned())
             .await
     }
 }
 
+/// Learn more at https://docs.rs/sea-query#iden
 #[derive(Iden)]
-pub(crate) enum Mac {
+pub(crate) enum Ip {
     Table,
-    MacId,
+    IpId,
     Created,
-    HardwareAddress,
-    ProtocolAddress,
+    Updated,
+    Interface,
+    Address,
+    Name,
 }
