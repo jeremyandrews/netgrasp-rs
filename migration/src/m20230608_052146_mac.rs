@@ -18,37 +18,33 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(Mac::Created)
-                            .timestamp()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Mac::Created).timestamp().not_null())
                     .col(ColumnDef::new(Mac::HardwareAddress).string().not_null())
                     .col(ColumnDef::new(Mac::ProtocolAddress).string().not_null())
                     .to_owned(),
             )
             .await?;
 
-            manager
+        manager
             .create_index(
                 Index::create()
                     .if_not_exists()
                     .name("idx-mac-hardware")
                     .unique()
                     .table(Mac::Table)
-                    .col(Mac::HardwareAddress)                        
+                    .col(Mac::HardwareAddress)
                     .to_owned(),
             )
             .await?;
-    
-            manager
+
+        manager
             .create_index(
                 Index::create()
                     .if_not_exists()
                     .name("idx-mac-protocol-hardware")
                     .table(Mac::Table)
-                    .col(Mac::ProtocolAddress)                        
-                    .col(Mac::HardwareAddress)                        
+                    .col(Mac::ProtocolAddress)
+                    .col(Mac::HardwareAddress)
                     .to_owned(),
             )
             .await

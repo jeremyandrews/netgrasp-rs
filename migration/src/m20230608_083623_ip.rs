@@ -18,16 +18,8 @@ impl MigrationTrait for Migration {
                             .auto_increment()
                             .primary_key(),
                     )
-                    .col(
-                        ColumnDef::new(Ip::Created)
-                            .timestamp()
-                            .not_null(),
-                    )
-                    .col(
-                        ColumnDef::new(Ip::Updated)
-                            .timestamp()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(Ip::Created).timestamp().not_null())
+                    .col(ColumnDef::new(Ip::Updated).timestamp().not_null())
                     .col(ColumnDef::new(Ip::Interface).string().not_null())
                     .col(ColumnDef::new(Ip::Address).string().not_null())
                     .col(ColumnDef::new(Ip::Name).string().not_null())
@@ -35,26 +27,26 @@ impl MigrationTrait for Migration {
             )
             .await?;
 
-            manager
+        manager
             .create_index(
                 Index::create()
                     .if_not_exists()
                     .name("idx-ip-interface-address")
                     .unique()
                     .table(Ip::Table)
-                    .col(Ip::Interface)                        
-                    .col(Ip::Address)                        
+                    .col(Ip::Interface)
+                    .col(Ip::Address)
                     .to_owned(),
             )
             .await?;
 
-            manager
+        manager
             .create_index(
                 Index::create()
                     .if_not_exists()
                     .name("idx-ip-name")
                     .table(Ip::Table)
-                    .col(Ip::Name)                        
+                    .col(Ip::Name)
                     .to_owned(),
             )
             .await

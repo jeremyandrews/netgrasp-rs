@@ -27,22 +27,14 @@ impl MigrationTrait for Migration {
                             .not_null(),
                     )
                     .col(ColumnDef::new(ActivityLog::Interface).string().not_null())
-                    .col(
-                        ColumnDef::new(ActivityLog::MacId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityLog::MacId).integer().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-mac-macid")
                             .from(ActivityLog::Table, ActivityLog::MacId)
                             .to(Mac::Table, Mac::MacId),
                     )
-                    .col(
-                        ColumnDef::new(ActivityLog::IpId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(ActivityLog::IpId).integer().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-ip-ipid")

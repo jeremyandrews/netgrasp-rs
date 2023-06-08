@@ -26,29 +26,58 @@ impl MigrationTrait for Migration {
                             .timestamp()
                             .not_null(),
                     )
-                    .col(ColumnDef::new(RecentActivity::Interface).string().not_null())
                     .col(
-                        ColumnDef::new(RecentActivity::MacId)
-                            .integer()
+                        ColumnDef::new(RecentActivity::Interface)
+                            .string()
                             .not_null(),
                     )
+                    .col(ColumnDef::new(RecentActivity::MacId).integer().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-mac-macid")
                             .from(RecentActivity::Table, RecentActivity::MacId)
                             .to(Mac::Table, Mac::MacId),
                     )
-                    .col(
-                        ColumnDef::new(RecentActivity::IpId)
-                            .integer()
-                            .not_null(),
-                    )
+                    .col(ColumnDef::new(RecentActivity::IpId).integer().not_null())
                     .foreign_key(
                         ForeignKey::create()
                             .name("fk-ip-ipid")
                             .from(RecentActivity::Table, RecentActivity::IpId)
                             .to(Ip::Table, Ip::IpId),
                     )
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx-recent-activity-timestamp")
+                    .table(RecentActivity::Table)
+                    .col(RecentActivity::Timestamp)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx-recent-activity-ip")
+                    .table(RecentActivity::Table)
+                    .col(RecentActivity::IpId)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx-recent-activity-mac")
+                    .table(RecentActivity::Table)
+                    .col(RecentActivity::MacId)
                     .to_owned(),
             )
             .await
