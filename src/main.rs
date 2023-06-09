@@ -13,10 +13,25 @@ use std::net::{IpAddr, Ipv4Addr};
 mod arp;
 mod db;
 
+#[derive(Debug)]
 pub(crate) struct NetgraspIp<'a> {
     interface: &'a str,
     address: &'a str,
-    name: &'a str,
+    host: Option<&'a str>,
+}
+
+#[derive(Debug, Default)]
+pub struct NetgraspActiveDevice {
+    pub interface: String,
+    pub ip_address: String,
+    pub mac_address: String,
+    pub host_name: String,
+    pub vendor_name: String,
+    pub vendor_full_name: String,
+    pub custom_name: String,
+    pub recently_seen_count: i64,
+    pub recently_seen_first: i32,
+    pub recently_seen_last: i32,
 }
 
 #[derive(Clone, Debug, Parser, Serialize, Deserialize)]
@@ -87,26 +102,11 @@ async fn main() {
         // Check for ARP packets at least 10 times a second.
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
         while let Ok(arp_packet) = arp_rx.try_recv() {
-            // @TODO: Only do MAC lookup if not already known.
-            let source_hardware = map_mac_to_owner(
+            let device = get_device_from_mac(
                 &oui_db,
-                arp_packet.arp_message.source_hardware_address.to_string(),
+                &arp_packet.arp_message.source_hardware_address.to_string(),
             );
-            let target_hardware = map_mac_to_owner(
-                &oui_db,
-                arp_packet.arp_message.target_hardware_address.to_string(),
-            );
-
-            // @TODO: Only do DNS lookup if not already known.
-            let source_address =
-                map_ip_to_hostname(&arp_packet.arp_message.source_protocol_address);
-            let target_address =
-                map_ip_to_hostname(&arp_packet.arp_message.target_protocol_address);
-
-            println!(
-                "{}: {} ({}) to {} ({}) ",
-                arp_packet.ifname, source_address, source_hardware, target_address, target_hardware,
-            );
+            let host = get_host_from_ip(&arp_packet.arp_message.source_protocol_address);
 
             let mac_id = db::record_mac(&database_url, &arp_packet.arp_message).await;
             let ip_id = db::record_ip(
@@ -114,15 +114,27 @@ async fn main() {
                 &NetgraspIp {
                     interface: &arp_packet.ifname,
                     address: &arp_packet.arp_message.source_protocol_address.to_string(),
-                    name: &source_address,
+                    host: host.as_deref(),
                 },
             )
             .await;
 
             if let (Some(m), Some(i)) = (mac_id, ip_id) {
-                let _ = db::record_activity(&database_url, &arp_packet.ifname, m, i).await;
+                let _ = db::record_activity(
+                    &database_url,
+                    &arp_packet.ifname,
+                    m,
+                    arp_packet.arp_message.source_hardware_address.to_string(),
+                    device,
+                    i,
+                    arp_packet.arp_message.source_protocol_address.to_string(),
+                    host,
+                )
+                .await;
             }
         }
+
+        println!("{:#?}", db::get_active_devices(&database_url).await);
     }
 }
 
@@ -138,31 +150,28 @@ fn list_interfaces() -> Vec<String> {
 }
 
 // Map MAC to owner.
-fn map_mac_to_owner(oui_db: &Oui, mac_address: String) -> String {
-    let oui_lookup = oui_db.lookup_by_mac(&mac_address);
+fn get_device_from_mac(oui_db: &Oui, mac_address: &str) -> Option<String> {
+    let oui_lookup = oui_db.lookup_by_mac(mac_address);
     match oui_lookup {
         Ok(r) => {
             if let Some(rec) = r {
-                rec.company_name.to_string()
+                Some(rec.company_name.to_string())
             } else {
-                mac_address
+                None
             }
         }
         Err(e) => {
             println!("OUI lookup error: {}", e);
-            mac_address
+            None
         }
     }
 }
 
 // Map IPv4 address to hostname.
 // @TODO: Also support IPv6.
-fn map_ip_to_hostname(ip_address: &Ipv4Addr) -> String {
+fn get_host_from_ip(ip_address: &Ipv4Addr) -> Option<String> {
     match lookup_addr(&IpAddr::V4(*ip_address)) {
-        Ok(a) => a.to_string(),
-        Err(_) => {
-            // No hostname, return IP address.
-            ip_address.to_string()
-        }
+        Ok(a) => Some(a.to_string()),
+        Err(_) => None,
     }
 }

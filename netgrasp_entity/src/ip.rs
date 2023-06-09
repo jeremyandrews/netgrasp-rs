@@ -11,7 +11,7 @@ pub struct Model {
     pub updated: String,
     pub interface: String,
     pub address: String,
-    pub name: String,
+    pub host: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

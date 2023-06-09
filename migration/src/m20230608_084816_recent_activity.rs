@@ -38,6 +38,8 @@ impl MigrationTrait for Migration {
                             .from(RecentActivity::Table, RecentActivity::MacId)
                             .to(Mac::Table, Mac::MacId),
                     )
+                    .col(ColumnDef::new(RecentActivity::Mac).string().not_null())
+                    .col(ColumnDef::new(RecentActivity::Vendor).string())
                     .col(ColumnDef::new(RecentActivity::IpId).integer().not_null())
                     .foreign_key(
                         ForeignKey::create()
@@ -45,6 +47,8 @@ impl MigrationTrait for Migration {
                             .from(RecentActivity::Table, RecentActivity::IpId)
                             .to(Ip::Table, Ip::IpId),
                     )
+                    .col(ColumnDef::new(RecentActivity::Ip).string().not_null())
+                    .col(ColumnDef::new(RecentActivity::Host).string())
                     .to_owned(),
             )
             .await?;
@@ -98,5 +102,9 @@ enum RecentActivity {
     Timestamp,
     Interface,
     MacId,
+    Mac,
+    Vendor,
     IpId,
+    Ip,
+    Host,
 }

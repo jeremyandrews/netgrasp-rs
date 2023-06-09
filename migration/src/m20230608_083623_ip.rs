@@ -22,7 +22,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Ip::Updated).timestamp().not_null())
                     .col(ColumnDef::new(Ip::Interface).string().not_null())
                     .col(ColumnDef::new(Ip::Address).string().not_null())
-                    .col(ColumnDef::new(Ip::Name).string().not_null())
+                    .col(ColumnDef::new(Ip::Host).string())
                     .to_owned(),
             )
             .await?;
@@ -44,9 +44,9 @@ impl MigrationTrait for Migration {
             .create_index(
                 Index::create()
                     .if_not_exists()
-                    .name("idx-ip-name")
+                    .name("idx-ip-host")
                     .table(Ip::Table)
-                    .col(Ip::Name)
+                    .col(Ip::Host)
                     .to_owned(),
             )
             .await
@@ -68,5 +68,5 @@ pub(crate) enum Ip {
     Updated,
     Interface,
     Address,
-    Name,
+    Host,
 }

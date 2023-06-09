@@ -10,7 +10,11 @@ pub struct Model {
     pub timestamp: String,
     pub interface: String,
     pub mac_id: i32,
+    pub mac: String,
+    pub vendor: Option<String>,
     pub ip_id: i32,
+    pub ip: String,
+    pub host: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
