@@ -1,6 +1,6 @@
 # Netgrasp
 
-A network observation tool.
+A passive network observation tool.
 
 ## Overview
 
@@ -14,6 +14,13 @@ Netgrasp monitors Arp traffic, performing MAC and reverse-DNS lookups to detect 
 
 
 * Leverages [simplelog](https://lib.rs/crates/simplelog) to provide logging to stdout and files.
+
+## Notes
+
+Create database:
+    ```
+    DATABASE_URL="sqlite://netgrasp.db" sea-orm-cli migrate fresh
+    ```
 
 ## TODO
 
