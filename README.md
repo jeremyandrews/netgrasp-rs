@@ -22,6 +22,11 @@ Create database:
     DATABASE_URL="sqlite://netgrasp.db" sea-orm-cli migrate fresh
     ```
 
+Update entities:
+    ```
+    DATABASE_URL="sqlite://netgrasp.db" sea-orm-cli generate entity -o netgrasp_entity/src
+    ```
+
 ## TODO
 
 1. Parse configuration file

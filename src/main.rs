@@ -4,22 +4,20 @@ use figment::{
     providers::{Env, Format, Serialized, Toml},
     Figment,
 };
-use libarp::arp::ArpMessage;
 use mac_oui::Oui;
-use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use tokio::sync::mpsc;
 
 use std::net::{IpAddr, Ipv4Addr};
 
-//use netgrasp_entity::activity_log;
-//use netgrasp_entity::ip;
-//use netgrasp_entity::mac;
-use netgrasp_entity::{prelude::*, *};
-
 mod arp;
 mod db;
 
+pub(crate) struct NetgraspIp<'a> {
+    interface: &'a str,
+    address: &'a str,
+    name: &'a str,
+}
 
 #[derive(Clone, Debug, Parser, Serialize, Deserialize)]
 struct Config {
@@ -110,8 +108,20 @@ async fn main() {
                 arp_packet.ifname, source_address, source_hardware, target_address, target_hardware,
             );
 
-            let mac_id = record_mac(&arp_packet.arp_message, &database_url).await;
-            println!("mac_id [{}]: {}", mac_id.unwrap(), source_hardware)
+            let mac_id = db::record_mac(&database_url, &arp_packet.arp_message).await;
+            let ip_id = db::record_ip(
+                &database_url,
+                &NetgraspIp {
+                    interface: &arp_packet.ifname,
+                    address: &arp_packet.arp_message.source_protocol_address.to_string(),
+                    name: &source_address,
+                },
+            )
+            .await;
+
+            if let (Some(m), Some(i)) = (mac_id, ip_id) {
+                let _ = db::record_activity(&database_url, &arp_packet.ifname, m, i).await;
+            }
         }
     }
 }
@@ -154,39 +164,5 @@ fn map_ip_to_hostname(ip_address: &Ipv4Addr) -> String {
             // No hostname, return IP address.
             ip_address.to_string()
         }
-    }
-}
-
-async fn record_mac(arp_message: &ArpMessage, database_url: &str) -> Option<i32> {
-    let mac = {
-        let db = db::connection(database_url).await;
-        match Mac::find()
-            .filter(mac::Column::HardwareAddress.like(&arp_message.source_hardware_address.to_string()))
-            .one(db)
-            .await
-        {
-            Ok(m) => m,
-            Err(_) => return None,
-        }
-    };
-    if let Some(m) = mac {
-        Some(m.mac_id)
-    } else {
-        let new_mac = mac::ActiveModel {
-            // @TODO: On SQLite this is apparently a string?
-            //created: Set(chrono::Utc::now().naive_utc().to_owned()),
-            created: Set(chrono::Utc::now().naive_utc().to_string()),
-            hardware_address: Set(arp_message.source_hardware_address.to_string()),
-            protocol_address: Set(arp_message.source_protocol_address.to_string()),
-            ..Default::default()
-        };
-        let new_mac_id = {
-            let db = db::connection(database_url).await;
-            Mac::insert(new_mac)
-                .exec(db)
-                .await
-                .expect("failed to write mac to database")
-        };
-        Some(new_mac_id.last_insert_id)
     }
 }

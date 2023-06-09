@@ -9,7 +9,6 @@ pub struct Model {
     pub mac_id: i32,
     pub created: String,
     pub hardware_address: String,
-    pub protocol_address: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

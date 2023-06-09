@@ -20,7 +20,6 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(Mac::Created).timestamp().not_null())
                     .col(ColumnDef::new(Mac::HardwareAddress).string().not_null())
-                    .col(ColumnDef::new(Mac::ProtocolAddress).string().not_null())
                     .to_owned(),
             )
             .await?;
@@ -32,18 +31,6 @@ impl MigrationTrait for Migration {
                     .name("idx-mac-hardware")
                     .unique()
                     .table(Mac::Table)
-                    .col(Mac::HardwareAddress)
-                    .to_owned(),
-            )
-            .await?;
-
-        manager
-            .create_index(
-                Index::create()
-                    .if_not_exists()
-                    .name("idx-mac-protocol-hardware")
-                    .table(Mac::Table)
-                    .col(Mac::ProtocolAddress)
                     .col(Mac::HardwareAddress)
                     .to_owned(),
             )
@@ -63,5 +50,4 @@ pub(crate) enum Mac {
     MacId,
     Created,
     HardwareAddress,
-    ProtocolAddress,
 }
