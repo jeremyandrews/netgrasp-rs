@@ -106,7 +106,7 @@ pub(crate) async fn record_activity(
     ip: String,
     host: Option<String>,
 ) {
-    println!("{}: {} ({:?}) [{:?}]", interface, ip, host, device);
+    //println!("{}: {} ({:?}) [{:?}]", interface, ip, host, device);
 
     let new_recent_activity = recent_activity::ActiveModel {
         // @TODO: On SQLite this is apparently a string?

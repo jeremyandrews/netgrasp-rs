@@ -1,4 +1,5 @@
-use clap::Parser;
+use chrono::naive::NaiveDateTime;
+    use clap::Parser;
 use dns_lookup::lookup_addr;
 use figment::{
     providers::{Env, Format, Serialized, Toml},
@@ -6,12 +7,15 @@ use figment::{
 };
 use mac_oui::Oui;
 use serde::{Deserialize, Serialize};
+use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 use std::net::{IpAddr, Ipv4Addr};
 
 mod arp;
 mod db;
+
+use crate::db::ActiveDevice;
 
 #[derive(Debug)]
 pub(crate) struct NetgraspIp<'a> {
@@ -98,6 +102,8 @@ async fn main() {
         });
     }
 
+    let mut last_displayed = 0;
+
     loop {
         // Check for ARP packets at least 10 times a second.
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -134,7 +140,12 @@ async fn main() {
             }
         }
 
-        println!("{:#?}", db::get_active_devices(&database_url).await);
+        if last_displayed > 100 {
+            display_active_devices(db::get_active_devices(&database_url).await);
+            last_displayed = 0;
+        } else {
+            last_displayed += 1;
+        }
     }
 }
 
@@ -174,4 +185,266 @@ fn get_host_from_ip(ip_address: &Ipv4Addr) -> Option<String> {
         Ok(a) => Some(a.to_string()),
         Err(_) => None,
     }
+}
+
+// Display a list of all active devices
+pub fn display_active_devices(active_devices: Vec<ActiveDevice>) {
+    println!("Active devices:");
+    // {:>##} gives the column a fixed width of ## characters, aligned right
+    println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
+    for device in active_devices.iter() {
+        let name = device_name(DeviceName {
+            host: device.host.clone(),
+            vendor: device.vendor.clone(),
+            mac: device.mac.to_string(),
+            ip: device.ip.to_string(),
+        });
+        println!(
+            "{:>34} {:>16} {:>22}",
+            truncate_string(name, 33),
+            truncate_string(device.ip.to_string(), 16),
+            time_ago(device.recently_seen_last.to_string(), false)
+        );
+    }
+}
+
+pub struct DeviceName {
+    //pub custom_name: String,
+    pub host: Option<String>,
+    pub vendor: Option<String>,
+    pub mac: String,
+    pub ip: String,
+}
+
+pub fn device_name(device: DeviceName) -> String {
+    //if device.custom_name != "" {
+    //    device.custom_name.to_string()
+    //} else if device.host_name != "" && device.host_name != device.ip_address {
+    if let Some(host) = device.host {
+        host
+    } else if let Some(vendor) = device.vendor {
+        vendor
+    } else {
+        device.mac
+    }
+}
+
+pub fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
+    if string_to_truncate.len() as u64 > max_length {
+        let truncated_length = max_length - 3;
+        string_to_truncate.truncate(truncated_length as usize);
+        string_to_truncate = string_to_truncate + "...";
+    }
+    string_to_truncate
+}
+
+pub fn time_ago(timestamp_string: String, precision: bool) -> String {
+    // @TODO: error handling.
+    let timestamp = NaiveDateTime::parse_from_str(&timestamp_string, "%Y-%m-%d %H:%M:%S.%f").unwrap().timestamp() as u64;
+
+    let mut seconds: u64 = time_elapsed(timestamp);
+    let days: u64 = seconds / 86400;
+    let remainder_string;
+
+    match days {
+        0 => match seconds {
+            0..=9 => "just now".to_string(),
+            10..=59 => seconds.to_string() + " seconds ago",
+            60..=119 => "a minute ago".to_string(),
+            120..=3599 => {
+                let time_string = (seconds / 60).to_string()
+                    + " minutes "
+                    + match precision {
+                        true => {
+                            let remainder = seconds % 60;
+                            match remainder {
+                                0 => "ago",
+                                1 => "1 second ago",
+                                _ => {
+                                    remainder_string = format!("{} seconds ago", remainder);
+                                    remainder_string.as_str()
+                                }
+                            }
+                        }
+                        false => "ago",
+                    };
+                time_string
+            }
+            3600..=7199 => "an hour ago".to_string(),
+            _ => {
+                let time_string = format!("{} hours ", seconds / 3600)
+                    + match precision {
+                        true => {
+                            let remainder: u64 = (seconds % 3600) / 60;
+                            match remainder {
+                                0 => "ago",
+                                1 => "1 minute ago",
+                                _ => {
+                                    remainder_string = format!("{} minutes ago", remainder);
+                                    remainder_string.as_str()
+                                }
+                            }
+                        }
+                        false => "ago",
+                    };
+                time_string
+            }
+        },
+        1 => {
+            let time_string = "1 day ".to_string()
+                + match precision {
+                    true => {
+                        seconds = seconds - 86400;
+                        match seconds {
+                            0..=119 => "ago",
+                            120..=3599 => {
+                                remainder_string = format!("{} minutes ago", seconds / 60);
+                                remainder_string.as_str()
+                            }
+                            3600..=7199 => "1 hour ago",
+                            _ => {
+                                remainder_string = format!("{} hours ago", seconds / 3600);
+                                remainder_string.as_str()
+                            }
+                        }
+                    }
+                    false => "ago",
+                };
+            time_string
+        }
+        2..=6 => {
+            let time_string = format!("{} days ", days)
+                + match precision {
+                    true => {
+                        seconds = seconds - 86400 * days;
+                        match seconds {
+                            0..=7199 => "ago",
+                            _ => {
+                                remainder_string = format!("{} hours ago", seconds / 3600);
+                                remainder_string.as_str()
+                            }
+                        }
+                    }
+                    false => "ago",
+                };
+            time_string
+        }
+        7 => {
+            let time_string = format!("1 week ")
+                + match precision {
+                    true => {
+                        let remainder: u64 = (days % 7) / 60;
+                        match remainder {
+                            0 => "ago",
+                            1 => "1 day ago",
+                            _ => {
+                                remainder_string = format!("{} days ago", remainder);
+                                remainder_string.as_str()
+                            }
+                        }
+                    }
+                    false => "ago",
+                };
+            time_string
+        }
+        8..=30 => {
+            let time_string = format!("{} weeks ", (days / 7) as u64)
+                + match precision {
+                    true => {
+                        let remainder: u64 = (days % 7) / 60;
+                        match remainder {
+                            0 => "ago",
+                            1 => "1 day ago",
+                            _ => {
+                                remainder_string = format!("{} days ago", remainder);
+                                remainder_string.as_str()
+                            }
+                        }
+                    }
+                    false => "ago",
+                };
+            time_string
+        }
+        31..=364 => {
+            let time_string = format!("{} months ", (days / 30) as u64)
+                + match precision {
+                    true => {
+                        let day_remainder: u64 = days % 30;
+                        match day_remainder {
+                            0 => "ago",
+                            1 => "1 day ago",
+                            2..=6 => {
+                                remainder_string = format!("{} days ago", day_remainder);
+                                remainder_string.as_str()
+                            }
+                            _ => {
+                                let week_remainder: u64 = day_remainder / 7;
+                                match week_remainder {
+                                    1 => "1 week ago",
+                                    _ => {
+                                        remainder_string = format!("{} weeks ago", week_remainder);
+                                        remainder_string.as_str()
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    false => "ago",
+                };
+            time_string
+        }
+        _ => {
+            let time_string = format!("{} years ", days / 365)
+                + match precision {
+                    true => {
+                        let day_remainder = days % 365;
+                        match day_remainder {
+                            0 => "ago",
+                            1 => "1 day ago",
+                            2..=6 => {
+                                remainder_string = format!("{} days ago", day_remainder);
+                                remainder_string.as_str()
+                            }
+                            _ => {
+                                let week_remainder = days % 7;
+                                match week_remainder {
+                                    0 => "ago",
+                                    1 => "1 week ago",
+                                    2..=4 => {
+                                        remainder_string = format!("{} weeks ago", week_remainder);
+                                        remainder_string.as_str()
+                                    }
+                                    _ => {
+                                        let month_remainder = days % 12;
+                                        match month_remainder {
+                                            0 => "ago",
+                                            1 => "1 month ago",
+                                            _ => {
+                                                remainder_string =
+                                                    format!("{} months ago", month_remainder);
+                                                remainder_string.as_str()
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    false => "ago",
+                };
+            time_string
+        }
+    }
+}
+
+pub fn timestamp_now() -> u64 {
+    let start = SystemTime::now();
+    start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs()
+}
+
+pub fn time_elapsed(timestamp: u64) -> u64 {
+    timestamp_now() - timestamp
 }
