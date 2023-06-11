@@ -152,7 +152,7 @@ pub struct ActiveDevice {
     pub vendor: Option<String>,
     pub ip: String,
     pub host: Option<String>,
-    //pub custom_name: Option<String>,
+    pub custom: Option<String>,
     pub recently_seen_count: i32,
     pub recently_seen_first: String,
     pub recently_seen_last: String,
@@ -166,6 +166,7 @@ pub(crate) async fn get_active_devices(database_url: &str) -> Vec<ActiveDevice> 
         .column_as(recent_activity::Column::Vendor, "vendor")
         .column_as(recent_activity::Column::Ip, "ip")
         .column_as(recent_activity::Column::Host, "host")
+        .column_as(recent_activity::Column::Custom, "custom")
         .column_as(
             recent_activity::Column::RecentActivityId.count(),
             "recently_seen_count",

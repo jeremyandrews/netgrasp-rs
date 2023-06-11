@@ -1,4 +1,7 @@
-use chrono::naive::NaiveDateTime;
+use chrono::{
+    naive::NaiveDateTime,
+    Days
+};
 use clap::Parser;
 use dns_lookup::lookup_addr;
 use figment::{
@@ -7,15 +10,10 @@ use figment::{
 };
 use mac_oui::Oui;
 use netgrasp_entity::recent_activity;
+use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
-
-use chrono::Days;
-
-use sea_orm::ColumnTrait;
-use sea_orm::EntityTrait;
-use sea_orm::QueryFilter;
 
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -194,6 +192,7 @@ pub fn display_active_devices(active_devices: Vec<ActiveDevice>) {
     println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
     for device in active_devices.iter() {
         let name = device_name(DeviceName {
+            custom: device.custom.clone(),
             host: device.host.clone(),
             vendor: device.vendor.clone(),
             mac: device.mac.to_string(),
@@ -209,7 +208,7 @@ pub fn display_active_devices(active_devices: Vec<ActiveDevice>) {
 }
 
 pub struct DeviceName {
-    //pub custom_name: String,
+    pub custom: Option<String>,
     pub host: Option<String>,
     pub vendor: Option<String>,
     pub mac: String,
@@ -217,10 +216,9 @@ pub struct DeviceName {
 }
 
 pub fn device_name(device: DeviceName) -> String {
-    //if device.custom_name != "" {
-    //    device.custom_name.to_string()
-    //} else if device.host_name != "" && device.host_name != device.ip_address {
-    if let Some(host) = device.host {
+    if let Some(custom) = device.custom {
+        custom
+    } else if let Some(host) = device.host {
         host
     } else if let Some(vendor) = device.vendor {
         vendor

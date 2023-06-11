@@ -24,7 +24,7 @@ Create new table:
 
 Recreate database:
     ```
-    DATABASE_URL="sqlite://netgrasp.db" sea-orm-cli migrate fresh
+    DATABASE_URL="sqlite://netgrasp.db" sea-orm-cli migrate -d netgrasp_migration fresh
     ```
 
 Update entities:
