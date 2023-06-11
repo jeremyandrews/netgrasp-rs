@@ -1,14 +1,21 @@
 use chrono::naive::NaiveDateTime;
-    use clap::Parser;
+use clap::Parser;
 use dns_lookup::lookup_addr;
 use figment::{
     providers::{Env, Format, Serialized, Toml},
     Figment,
 };
 use mac_oui::Oui;
+use netgrasp_entity::recent_activity;
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
+
+use chrono::Days;
+
+use sea_orm::ColumnTrait;
+use sea_orm::EntityTrait;
+use sea_orm::QueryFilter;
 
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -22,20 +29,6 @@ pub(crate) struct NetgraspIp<'a> {
     interface: &'a str,
     address: &'a str,
     host: Option<&'a str>,
-}
-
-#[derive(Debug, Default)]
-pub struct NetgraspActiveDevice {
-    pub interface: String,
-    pub ip_address: String,
-    pub mac_address: String,
-    pub host_name: String,
-    pub vendor_name: String,
-    pub vendor_full_name: String,
-    pub custom_name: String,
-    pub recently_seen_count: i64,
-    pub recently_seen_first: i32,
-    pub recently_seen_last: i32,
 }
 
 #[derive(Clone, Debug, Parser, Serialize, Deserialize)]
@@ -102,8 +95,15 @@ async fn main() {
         });
     }
 
-    let mut last_displayed = 0;
+    // Spawn a thread to perform tasks like cleaning up old messages, sending notifications,
+    // and detecting patterns.
+    let audit_database_url = database_url.clone();
+    tokio::spawn(async move {
+        audit(audit_database_url).await;
+    });
 
+    // @TODO: display every X seconds
+    let mut last_displayed = 0;
     loop {
         // Check for ARP packets at least 10 times a second.
         tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
@@ -229,7 +229,7 @@ pub fn device_name(device: DeviceName) -> String {
     }
 }
 
-pub fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
+pub(crate) fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
     if string_to_truncate.len() as u64 > max_length {
         let truncated_length = max_length - 3;
         string_to_truncate.truncate(truncated_length as usize);
@@ -238,9 +238,11 @@ pub fn truncate_string(mut string_to_truncate: String, max_length: u64) -> Strin
     string_to_truncate
 }
 
-pub fn time_ago(timestamp_string: String, precision: bool) -> String {
+pub(crate) fn time_ago(timestamp_string: String, precision: bool) -> String {
     // @TODO: error handling.
-    let timestamp = NaiveDateTime::parse_from_str(&timestamp_string, "%Y-%m-%d %H:%M:%S.%f").unwrap().timestamp() as u64;
+    let timestamp = NaiveDateTime::parse_from_str(&timestamp_string, "%Y-%m-%d %H:%M:%S.%f")
+        .unwrap()
+        .timestamp() as u64;
 
     let mut seconds: u64 = time_elapsed(timestamp);
     let days: u64 = seconds / 86400;
@@ -437,7 +439,7 @@ pub fn time_ago(timestamp_string: String, precision: bool) -> String {
     }
 }
 
-pub fn timestamp_now() -> u64 {
+pub(crate) fn timestamp_now() -> u64 {
     let start = SystemTime::now();
     start
         .duration_since(UNIX_EPOCH)
@@ -445,6 +447,39 @@ pub fn timestamp_now() -> u64 {
         .as_secs()
 }
 
-pub fn time_elapsed(timestamp: u64) -> u64 {
+pub(crate) fn time_elapsed(timestamp: u64) -> u64 {
     timestamp_now() - timestamp
+}
+
+pub async fn audit(database_url: String) {
+    let mut every_second = 0;
+    loop {
+        // Every second...
+        if timestamp_now() - every_second > 1 {
+            let db = db::connection(&database_url).await;
+            every_second = timestamp_now();
+
+            let yesterday = chrono::Utc::now()
+                .naive_utc()
+                .checked_sub_days(Days::new(1))
+                .unwrap()
+                .to_string();
+
+            let res = match recent_activity::Entity::delete_many()
+                .filter(recent_activity::Column::Timestamp.gt(yesterday))
+                .exec(db)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("fatal database error: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            //println!("deleted {:?} rows from recent_activity table.", res);
+        }
+
+        // Loop 4 times per second.
+        tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
+    }
 }
