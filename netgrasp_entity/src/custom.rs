@@ -3,20 +3,15 @@
 use sea_orm::entity::prelude::*;
 
 #[derive(Clone, Debug, PartialEq, DeriveEntityModel, Eq)]
-#[sea_orm(table_name = "recent_activity")]
+#[sea_orm(table_name = "custom")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub recent_activity_id: i32,
-    pub timestamp: String,
-    pub interface: String,
+    pub id: i32,
+    pub created: String,
+    pub updated: String,
     pub mac_id: i32,
-    pub mac: String,
-    pub vendor: Option<String>,
     pub ip_id: i32,
-    pub ip: String,
-    pub host: Option<String>,
-    pub custom: Option<String>,
-    pub audited: Option<i32>,
+    pub name: Option<String>,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]

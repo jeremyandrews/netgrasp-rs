@@ -5,4 +5,5 @@ Cargo.lock
 *.log
 *.db
 /data/*
-migration/target
+netgrasp_migration/target
+netgrasp_entity/target

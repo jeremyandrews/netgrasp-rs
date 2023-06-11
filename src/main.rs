@@ -465,7 +465,7 @@ pub async fn audit(database_url: String) {
                 .unwrap()
                 .to_string();
 
-            let res = match recent_activity::Entity::delete_many()
+            let _res = match recent_activity::Entity::delete_many()
                 .filter(recent_activity::Column::Timestamp.gt(yesterday))
                 .exec(db)
                 .await

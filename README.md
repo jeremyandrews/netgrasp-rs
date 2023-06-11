@@ -17,7 +17,12 @@ Netgrasp monitors Arp traffic, performing MAC and reverse-DNS lookups to detect 
 
 ## Notes
 
-Create database:
+Create new table:
+    ```
+    sea-orm-cli migrate generate <TableName>
+    ```
+
+Recreate database:
     ```
     DATABASE_URL="sqlite://netgrasp.db" sea-orm-cli migrate fresh
     ```

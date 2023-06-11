@@ -3,6 +3,7 @@
 pub mod prelude;
 
 pub mod activity_log;
+pub mod custom;
 pub mod ip;
 pub mod mac;
 pub mod recent_activity;

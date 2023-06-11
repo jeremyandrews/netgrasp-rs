@@ -49,6 +49,8 @@ impl MigrationTrait for Migration {
                     )
                     .col(ColumnDef::new(RecentActivity::Ip).string().not_null())
                     .col(ColumnDef::new(RecentActivity::Host).string())
+                    .col(ColumnDef::new(RecentActivity::Custom).string())
+                    .col(ColumnDef::new(RecentActivity::Audited).integer())
                     .to_owned(),
             )
             .await?;
@@ -60,6 +62,17 @@ impl MigrationTrait for Migration {
                     .name("idx-recent-activity-timestamp")
                     .table(RecentActivity::Table)
                     .col(RecentActivity::Timestamp)
+                    .to_owned(),
+            )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx-recent-activity-audited")
+                    .table(RecentActivity::Table)
+                    .col(RecentActivity::Audited)
                     .to_owned(),
             )
             .await?;
@@ -107,4 +120,6 @@ enum RecentActivity {
     IpId,
     Ip,
     Host,
+    Custom,
+    Audited,
 }

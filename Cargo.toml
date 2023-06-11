@@ -5,11 +5,11 @@ authors = ["Jeremy Andrews <jeremy@tag1consulting.com>"]
 edition = "2018"
 
 [workspace]
-members = [".", "netgrasp_entity", "migration"]
+members = [".", "netgrasp_entity", "netgrasp_migration"]
 
 [dependencies]
 netgrasp_entity = { path = "netgrasp_entity" }
-migration = { path = "migration" }
+netgrasp_migration = { path = "netgrasp_migration" }
 
 arp-toolkit = "0.3"
 chrono = "^0.4"
