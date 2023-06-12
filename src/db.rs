@@ -1,3 +1,5 @@
+// Interaction with database layer.
+
 use async_once_cell::OnceCell;
 use libarp::arp::ArpMessage;
 use sea_orm::*;
