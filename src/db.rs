@@ -119,6 +119,7 @@ pub(crate) async fn record_activity(
         ip_id: Set(ip_id),
         ip: Set(ip),
         host: Set(host),
+        audited: Set(0),
         ..Default::default()
     };
 

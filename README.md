@@ -29,7 +29,7 @@ Recreate database:
 
 Update entities:
     ```
-    DATABASE_URL="sqlite://netgrasp.db" sea-orm-cli generate entity -o netgrasp_entity/src
+    DATABASE_URL="sqlite://netgrasp.db" sea-orm-cli generate entity --with-serde serialize -o netgrasp_entity/src
     ```
 
 ## TODO

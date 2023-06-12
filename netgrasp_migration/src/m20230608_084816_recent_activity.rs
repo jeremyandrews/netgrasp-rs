@@ -50,7 +50,7 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(RecentActivity::Ip).string().not_null())
                     .col(ColumnDef::new(RecentActivity::Host).string())
                     .col(ColumnDef::new(RecentActivity::Custom).string())
-                    .col(ColumnDef::new(RecentActivity::Audited).integer())
+                    .col(ColumnDef::new(RecentActivity::Audited).integer().not_null())
                     .to_owned(),
             )
             .await?;

@@ -1,7 +1,4 @@
-use chrono::{
-    naive::NaiveDateTime,
-    Days
-};
+use chrono::{naive::NaiveDateTime, Days};
 use clap::Parser;
 use dns_lookup::lookup_addr;
 use figment::{
@@ -10,10 +7,13 @@ use figment::{
 };
 use mac_oui::Oui;
 use netgrasp_entity::recent_activity;
-use sea_orm::{ColumnTrait, EntityTrait, QueryFilter};
 use serde::{Deserialize, Serialize};
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
+
+use crate::sea_query::Expr;
+use netgrasp_entity::prelude::RecentActivity;
+use sea_orm::*;
 
 use std::net::{IpAddr, Ipv4Addr};
 
@@ -29,8 +29,14 @@ pub(crate) struct NetgraspIp<'a> {
     host: Option<&'a str>,
 }
 
+#[derive(Debug, Serialize)]
+struct SlackMessage {
+    channel: String,
+    text: String,
+}
+
 #[derive(Clone, Debug, Parser, Serialize, Deserialize)]
-struct Config {
+pub struct Config {
     /// Interface(s) to listen on
     #[arg(short, long, value_delimiter = ',', value_name = "INT1,INT2,...")]
     interfaces: Vec<String>,
@@ -38,18 +44,29 @@ struct Config {
     /// Path and name of database
     #[arg(short, long)]
     database: Option<String>,
+
+    /// Optional Slack notification channel
+    #[arg(short, long)]
+    slack_channel: Option<String>,
+
+    /// Optional Slack webhook
+    #[arg(short, long)]
+    slack_webhook: Option<String>,
 }
 
 #[tokio::main]
 async fn main() {
     // Start with toml configuration file.
+    // @TODO @fixme it's not working as intended
     let config: Config = Figment::from(Toml::file("netgrasp.toml"))
         // Override with anything set in environment variables.
-        .merge(Env::prefixed("NETGRASP_"))
+        .adjoin(Env::prefixed("NETGRASP_"))
         // Override with anything set via flags.
-        .merge(Serialized::defaults(Config::parse()))
+        .adjoin(Serialized::defaults(Config::parse()))
         .extract()
         .unwrap();
+
+    println!("Config: {:#?}", config);
 
     // Interfaces must be configurex (typically in `netgrasp.toml` or NETGRASP_INTERFACES.)
     if config.interfaces.is_empty() {
@@ -86,7 +103,7 @@ async fn main() {
 
     // Listen on configured interfaces.
     let (arp_tx, mut arp_rx) = mpsc::channel(2048);
-    for interface in config.interfaces {
+    for interface in config.interfaces.clone() {
         let interface_arp_tx = arp_tx.clone();
         tokio::spawn(async move {
             arp::listen(interface.clone(), interface_arp_tx).await;
@@ -97,7 +114,7 @@ async fn main() {
     // and detecting patterns.
     let audit_database_url = database_url.clone();
     tokio::spawn(async move {
-        audit(audit_database_url).await;
+        audit(audit_database_url, &config).await;
     });
 
     // @TODO: display every X seconds
@@ -449,14 +466,90 @@ pub(crate) fn time_elapsed(timestamp: u64) -> u64 {
     timestamp_now() - timestamp
 }
 
-pub async fn audit(database_url: String) {
+// Audit thread analyzes recent_activity.
+pub async fn audit(database_url: String, config: &Config) {
     let mut every_second = 0;
+    let mut every_minute = 0;
     loop {
         // Every second...
         if timestamp_now() - every_second > 1 {
             let db = db::connection(&database_url).await;
             every_second = timestamp_now();
 
+            // Retrieve each unaudited Mac hardware address.
+            let recent_activity = match recent_activity::Entity::find()
+                .filter(recent_activity::Column::Audited.eq(0))
+                .group_by(recent_activity::Column::Interface)
+                .group_by(recent_activity::Column::Mac)
+                .all(db)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("audit recent_activity query error: {}", e);
+                    Vec::new()
+                }
+            };
+
+            for activity in recent_activity {
+                // Determine if this Mac has been seen recently.
+                let seen_mac = match recent_activity::Entity::find()
+                    .filter(recent_activity::Column::Audited.eq(1))
+                    .filter(recent_activity::Column::Mac.contains(&activity.mac))
+                    .one(db)
+                    .await
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        eprintln!("audit recent_activity query error: {}", e);
+                        None
+                    }
+                };
+
+                // Update database, activity has been audited.
+                match RecentActivity::update_many()
+                    .col_expr(recent_activity::Column::Audited, Expr::value(1))
+                    .filter(recent_activity::Column::Mac.contains(&activity.mac))
+                    .filter(recent_activity::Column::Audited.eq(0))
+                    .exec(db)
+                    .await
+                {
+                    Ok(_) => (),
+                    Err(e) => {
+                        eprintln!("update recent_activity fatal error: {}", e);
+                        std::process::exit(1);
+                    }
+                }
+
+                // @TODO: Add generic notification library/integration(s) here.
+                if seen_mac.is_none() {
+                    println!("Seen for the first time: {:#?}", activity);
+                    // @TODO: For now, hard code a simple Slack notification.
+                    if let (Some(slack_channel), Some(slack_webhook)) =
+                        (config.slack_channel.as_ref(), config.slack_webhook.as_ref())
+                    {
+                        let message = SlackMessage {
+                            channel: slack_channel.to_string(),
+                            text: format!("New device:\n - Custom: {:?}\n - Host: {:?}\n - IP: {}\n - Vendor: {:?}\n - Mac: {}",
+                            activity.custom,
+                            activity.host,
+                            activity.ip,
+                            activity.vendor,
+                            activity.mac,
+                        )};
+                        let client = reqwest::Client::new();
+                        let _res = client.post(slack_webhook).json(&message).send().await;
+                    }
+                }
+            }
+        }
+
+        // Every minute...
+        if timestamp_now() - every_minute > 60 {
+            let db = db::connection(&database_url).await;
+            every_minute = timestamp_now();
+
+            // @TODO: Shrink this to 2-3 hours.
             let yesterday = chrono::Utc::now()
                 .naive_utc()
                 .checked_sub_days(Days::new(1))
@@ -464,7 +557,7 @@ pub async fn audit(database_url: String) {
                 .to_string();
 
             let _res = match recent_activity::Entity::delete_many()
-                .filter(recent_activity::Column::Timestamp.gt(yesterday))
+                .filter(recent_activity::Column::Timestamp.lt(yesterday))
                 .exec(db)
                 .await
             {

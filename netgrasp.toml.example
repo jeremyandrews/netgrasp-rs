@@ -1,0 +1,7 @@
+# Specify one or more interfaces to monitor.
+#interfaces = ["en0"]
+
+# Optionally configure a Slack channel to post notifications to.
+#slack_channel = "A1A1AA1A1"
+# Optionally configure a webhook to post Slack notifications to.
+#slack_webhook = "https://hooks.slack.com/services/A111AA111/A11AAAAAA1A/1AAA11aa1AA1aAaaAA1aaaAA"

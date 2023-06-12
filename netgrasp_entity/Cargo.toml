@@ -5,4 +5,5 @@ edition = "2021"
 
 [dependencies]
 sea-orm = "^0"
+serde = "1.0"
 
