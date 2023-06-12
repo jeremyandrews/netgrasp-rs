@@ -4,6 +4,9 @@
 Cargo.lock
 *.log
 *.db
+*.swp
+netgrasp.toml
 /data/*
 netgrasp_migration/target
 netgrasp_entity/target
+.vscode/
