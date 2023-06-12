@@ -6,13 +6,13 @@ use figment::{
     Figment,
 };
 use mac_oui::Oui;
-use netgrasp_entity::recent_activity;
+use netgrasp_entity::{prelude::*, *};
 use serde::{Deserialize, Serialize};
+use std::io;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::sync::mpsc;
 
 use crate::sea_query::Expr;
-use netgrasp_entity::prelude::RecentActivity;
 use sea_orm::*;
 
 use std::net::{IpAddr, Ipv4Addr};
@@ -45,6 +45,10 @@ pub struct Config {
     #[arg(short, long)]
     database: Option<String>,
 
+    /// Identify mac with custom name
+    #[arg(long)]
+    identify: bool,
+
     /// Optional Slack notification channel
     #[arg(short, long)]
     slack_channel: Option<String>,
@@ -67,6 +71,95 @@ async fn main() {
         .unwrap();
 
     println!("Config: {:#?}", config);
+
+    // @TODO: Allow configuration of PostgreSQL or MySQL database.
+    let default_db_name = "netgrasp.db".to_string();
+    let database_name = config.database.as_ref().unwrap_or(&default_db_name);
+    let database_url = format!("sqlite://{}", database_name);
+
+    if config.identify {
+        println!("Identify MAC addresses...");
+
+        let macs = {
+            let db = db::connection(&database_url).await;
+            // @TODO: Optimize this with a single join query?
+            // Start with all known Mac IDs. Get all known Mac IDs.
+            match recent_activity::Entity::find()
+                // Consider each recently seen Mac a single time.
+                .group_by(recent_activity::Column::MacId)
+                // Start with most recently seen first.
+                .order_by_desc(recent_activity::Column::Timestamp)
+                .all(db)
+                .await
+            {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("list all mac addresses query error: {}", e);
+                    Vec::new()
+                }
+            }
+        };
+
+        for mac in macs {
+            let identified_mac = {
+                let db = db::connection(&database_url).await;
+                match custom::Entity::find()
+                    .filter(custom::Column::MacId.eq(mac.mac_id))
+                    .one(db)
+                    .await
+                {
+                    Ok(m) => m,
+                    Err(e) => {
+                        eprintln!("find unidentified mac addresses query error: {}", e);
+                        None
+                    }
+                }
+            };
+            if identified_mac.is_none() {
+                if let Some(custom) = mac.custom {
+                    println!("Identified mac address:");
+                    println!(" - Custom: {}", custom);
+                } else {
+                    println!("Unidentified Mac address:");
+                }
+                println!(" - Interface: {}", mac.interface);
+                if let Some(host) = mac.host {
+                    println!(" - Host: {}", host);
+                }
+                println!(" - Ip: {}", mac.ip);
+                if let Some(vendor) = mac.vendor {
+                    println!(" - Vendor: {}", vendor);
+                }
+                println!(" - Mac: {}", mac.mac);
+                println!(" - Last seen: {}", time_ago(mac.timestamp, false));
+
+                let mut buffer = String::new();
+                let stdin = io::stdin();
+                let _ = stdin.read_line(&mut buffer);
+
+                if !buffer.trim().is_empty() {
+                    let new_custom = custom::ActiveModel {
+                        created: Set(chrono::Utc::now().naive_utc().to_string()),
+                        updated: Set(chrono::Utc::now().naive_utc().to_string()),
+                        mac_id: Set(mac.mac_id),
+                        ip_id: Set(mac.ip_id),
+                        name: Set(buffer.trim().to_string()),
+                        ..Default::default()
+                    };
+                    let _ = {
+                        let db = db::connection(&database_url).await;
+                        Custom::insert(new_custom)
+                            .exec(db)
+                            .await
+                            .expect("failed to write custom to database")
+                    };
+                    println!("Set custom name to: '{}'\n", buffer.trim());
+                }
+            }
+        }
+
+        std::process::exit(0);
+    }
 
     // Interfaces must be configurex (typically in `netgrasp.toml` or NETGRASP_INTERFACES.)
     if config.interfaces.is_empty() {
@@ -95,11 +188,6 @@ async fn main() {
             std::process::exit(1)
         }
     };
-
-    // @TODO: Allow configuration of PostgreSQL or MySQL database.
-    let default_db_name = "netgrasp.db".to_string();
-    let database_name = config.database.as_ref().unwrap_or(&default_db_name);
-    let database_url = format!("sqlite://{}", database_name);
 
     // Listen on configured interfaces.
     let (arp_tx, mut arp_rx) = mpsc::channel(2048);

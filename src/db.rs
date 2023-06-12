@@ -95,6 +95,20 @@ pub(crate) async fn record_ip(database_url: &str, ip: &NetgraspIp<'_>) -> Option
     }
 }
 
+pub(crate) async fn get_custom(database_url: &str, mac_id: i32) -> Option<String> {
+    let db = connection(database_url).await;
+    let custom_name = custom::Entity::find()
+        .filter(custom::Column::MacId.eq(mac_id))
+        .one(db)
+        .await
+        .expect("failed to query custom table");
+    if let Some(name) = custom_name {
+        Some(name.name)
+    } else {
+        None
+    }
+}
+
 // Record arp activity.
 pub(crate) async fn record_activity(
     database_url: &str,
@@ -119,6 +133,7 @@ pub(crate) async fn record_activity(
         ip_id: Set(ip_id),
         ip: Set(ip),
         host: Set(host),
+        custom: Set(get_custom(database_url, mac_id).await),
         audited: Set(0),
         ..Default::default()
     };

@@ -15,7 +15,7 @@ impl MigrationTrait for Migration {
                     .table(Custom::Table)
                     .if_not_exists()
                     .col(
-                        ColumnDef::new(Custom::Id)
+                        ColumnDef::new(Custom::CustomId)
                             .integer()
                             .not_null()
                             .auto_increment()
@@ -37,7 +37,7 @@ impl MigrationTrait for Migration {
                             .from(Custom::Table, Custom::IpId)
                             .to(Ip::Table, Ip::IpId),
                     )
-                    .col(ColumnDef::new(Custom::Name).string())
+                    .col(ColumnDef::new(Custom::Name).string().not_null())
                     .to_owned(),
             )
             .await
@@ -54,7 +54,7 @@ impl MigrationTrait for Migration {
 #[derive(Iden)]
 enum Custom {
     Table,
-    Id,
+    CustomId,
     Created,
     Updated,
     MacId,

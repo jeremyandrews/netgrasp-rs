@@ -7,12 +7,12 @@ use serde::Serialize;
 #[sea_orm(table_name = "custom")]
 pub struct Model {
     #[sea_orm(primary_key)]
-    pub id: i32,
+    pub custom_id: i32,
     pub created: String,
     pub updated: String,
     pub mac_id: i32,
     pub ip_id: i32,
-    pub name: Option<String>,
+    pub name: String,
 }
 
 #[derive(Copy, Clone, Debug, EnumIter, DeriveRelation)]
