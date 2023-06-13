@@ -7,7 +7,8 @@ use chrono::naive::NaiveDateTime;
 use dns_lookup::lookup_addr;
 use mac_oui::Oui;
 
-use crate::db::ActiveDevice;
+use crate::db;
+use crate::recent_activity::Model;
 
 pub(crate) fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
     if string_to_truncate.len() as u64 > max_length {
@@ -232,7 +233,7 @@ pub(crate) fn time_elapsed(timestamp: u64) -> u64 {
 }
 
 // Display a list of all active devices
-pub fn display_active_devices(active_devices: Vec<ActiveDevice>) {
+pub fn display_active_devices(active_devices: Vec<db::ActiveDevice>) {
     println!("Active devices:");
     // {:>##} gives the column a fixed width of ## characters, aligned right
     println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
@@ -308,5 +309,31 @@ pub(crate) fn get_host_from_ip(ip_address: &Ipv4Addr) -> Option<String> {
     match lookup_addr(&IpAddr::V4(*ip_address)) {
         Ok(a) => Some(a.to_string()),
         Err(_) => None,
+    }
+}
+
+pub(crate) async fn display_mac_details(database_url: &str, mac: &Model) {
+    let stats = db::get_mac_stats(database_url, &mac.mac).await;
+    if let Some(custom) = mac.custom.as_ref() {
+        println!("Identified mac address:");
+        println!(" - Custom: {}", custom);
+    } else {
+        println!("Unidentified Mac address:");
+    }
+    println!(" - Interface: {}", mac.interface);
+    if let Some(host) = mac.host.as_ref() {
+        println!(" - Host: {}", host);
+    }
+    println!(" - Ip: {}", mac.ip);
+    if let Some(vendor) = mac.vendor.as_ref() {
+        println!(" - Vendor: {}", vendor);
+    }
+    println!(" - Mac: {}", mac.mac);
+    if let Some(recent) = stats {
+        if let Some(timestamp) = recent.seen_recently {
+            println!(" - Last seen: {}", time_ago(timestamp, false));
+        }
+        println!(" - Times seen recently: {}", recent.seen_count);
+        println!(" - First seen: {}", time_ago(recent.seen_first, false));
     }
 }

@@ -7,9 +7,17 @@ use sea_orm::*;
 
 use netgrasp_entity::{prelude::*, *};
 
+use crate::recent_activity::Model;
 use crate::NetgraspIp;
 
 static DB: OnceCell<DatabaseConnection> = OnceCell::new();
+
+#[derive(FromQueryResult, Debug)]
+pub(crate) struct DeviceSeen {
+    pub(crate) seen_count: i32,
+    pub(crate) seen_recently: Option<String>,
+    pub(crate) seen_first: String,
+}
 
 pub(crate) async fn connection(database_url: &str) -> &DatabaseConnection {
     DB.get_or_init(async {
@@ -218,4 +226,82 @@ pub(crate) async fn get_active_devices(database_url: &str) -> Vec<ActiveDevice> 
             Vec::new()
         }
     }
+}
+
+// Get a list of all MAC's found in recent_activity.
+pub(crate) async fn get_active_macs(database_url: &str) -> Vec<Model> {
+    let db = connection(&database_url).await;
+    match recent_activity::Entity::find()
+        // Consider each recently seen Mac a single time.
+        .group_by(recent_activity::Column::MacId)
+        // Start with most recently seen first.
+        .order_by_desc(recent_activity::Column::Timestamp.max())
+        .all(db)
+        .await
+    {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("list all mac addresses query error: {}", e);
+            Vec::new()
+        }
+    }
+}
+
+// Returns bool indicating whether or not a MAC has been assigned a custom name.
+pub(crate) async fn is_identified_mac(database_url: &str, mac_id: i32) -> bool {
+    let db = connection(&database_url).await;
+    match custom::Entity::find()
+        .filter(custom::Column::MacId.eq(mac_id))
+        .one(db)
+        .await
+    {
+        Ok(m) => m.is_some(),
+        Err(e) => {
+            eprintln!("find unidentified mac addresses query error: {}", e);
+            false
+        }
+    }
+}
+
+pub(crate) async fn get_mac_stats(database_url: &str, mac: &str) -> Option<DeviceSeen> {
+    let db = connection(&database_url).await;
+    recent_activity::Entity::find()
+        .left_join(Mac)
+        .filter(recent_activity::Column::Mac.contains(&mac))
+        .filter(recent_activity::Column::Audited.eq(1))
+        .group_by(recent_activity::Column::Mac)
+        .column_as(
+            recent_activity::Column::RecentActivityId.count(),
+            "seen_count",
+        )
+        .column_as(recent_activity::Column::Timestamp.max(), "seen_recently")
+        .column_as(mac::Column::Created, "seen_first")
+        .into_model::<DeviceSeen>()
+        .one(db)
+        .await
+        .expect("failed to poll timestamp information")
+}
+
+pub(crate) async fn record_custom(
+    database_url: &str,
+    mac_id: i32,
+    ip_id: i32,
+    custom: &str,
+) -> bool {
+    let new_custom = custom::ActiveModel {
+        created: Set(chrono::Utc::now().naive_utc().to_string()),
+        updated: Set(chrono::Utc::now().naive_utc().to_string()),
+        mac_id: Set(mac_id),
+        ip_id: Set(ip_id),
+        name: Set(custom.to_string()),
+        ..Default::default()
+    };
+    let _ = {
+        let db = connection(&database_url).await;
+        Custom::insert(new_custom)
+            .exec(db)
+            .await
+            .expect("failed to write custom to database")
+    };
+    true
 }

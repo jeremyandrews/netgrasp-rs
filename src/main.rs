@@ -4,7 +4,7 @@ use figment::{
     Figment,
 };
 use mac_oui::Oui;
-use netgrasp_entity::{prelude::*, *};
+use netgrasp_entity::*;
 use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use std::io;
@@ -40,6 +40,10 @@ pub struct Config {
     #[arg(long)]
     identify: bool,
 
+    /// Edit identified custom name
+    #[arg(long)]
+    reidentify: bool,
+
     /// Optional Slack notification channel
     #[arg(short, long)]
     slack_channel: Option<String>,
@@ -71,79 +75,36 @@ async fn main() {
     if config.identify {
         println!("Identify MAC addresses...");
 
-        let macs = {
-            let db = db::connection(&database_url).await;
-            // @TODO: Optimize this with a single join query?
-            // Start with all known Mac IDs. Get all known Mac IDs.
-            match recent_activity::Entity::find()
-                // Consider each recently seen Mac a single time.
-                .group_by(recent_activity::Column::MacId)
-                // Start with most recently seen first.
-                .order_by_desc(recent_activity::Column::Timestamp)
-                .all(db)
-                .await
-            {
-                Ok(r) => r,
-                Err(e) => {
-                    eprintln!("list all mac addresses query error: {}", e);
-                    Vec::new()
-                }
-            }
-        };
-
-        for mac in macs {
-            let identified_mac = {
-                let db = db::connection(&database_url).await;
-                match custom::Entity::find()
-                    .filter(custom::Column::MacId.eq(mac.mac_id))
-                    .one(db)
-                    .await
-                {
-                    Ok(m) => m,
-                    Err(e) => {
-                        eprintln!("find unidentified mac addresses query error: {}", e);
-                        None
-                    }
-                }
-            };
-            if identified_mac.is_none() {
-                if let Some(custom) = mac.custom {
-                    println!("Identified mac address:");
-                    println!(" - Custom: {}", custom);
-                } else {
-                    println!("Unidentified Mac address:");
-                }
-                println!(" - Interface: {}", mac.interface);
-                if let Some(host) = mac.host {
-                    println!(" - Host: {}", host);
-                }
-                println!(" - Ip: {}", mac.ip);
-                if let Some(vendor) = mac.vendor {
-                    println!(" - Vendor: {}", vendor);
-                }
-                println!(" - Mac: {}", mac.mac);
-                println!(" - Last seen: {}", utils::time_ago(mac.timestamp, false));
+        for mac in db::get_active_macs(&database_url).await {
+            if !db::is_identified_mac(&database_url, mac.mac_id).await {
+                utils::display_mac_details(&database_url, &mac).await;
 
                 let mut buffer = String::new();
                 let stdin = io::stdin();
                 let _ = stdin.read_line(&mut buffer);
 
                 if !buffer.trim().is_empty() {
-                    let new_custom = custom::ActiveModel {
-                        created: Set(chrono::Utc::now().naive_utc().to_string()),
-                        updated: Set(chrono::Utc::now().naive_utc().to_string()),
-                        mac_id: Set(mac.mac_id),
-                        ip_id: Set(mac.ip_id),
-                        name: Set(buffer.trim().to_string()),
-                        ..Default::default()
-                    };
-                    let _ = {
-                        let db = db::connection(&database_url).await;
-                        Custom::insert(new_custom)
-                            .exec(db)
-                            .await
-                            .expect("failed to write custom to database")
-                    };
+                    db::record_custom(&database_url, mac.mac_id, mac.ip_id, buffer.trim()).await;
+                    println!("Set custom name to: '{}'\n", buffer.trim());
+                }
+            }
+        }
+
+        std::process::exit(0);
+    } else if config.reidentify {
+        println!("Re-identify MAC addresses...");
+
+        for mac in db::get_active_macs(&database_url).await {
+            println!("{:#?}", mac);
+            if db::is_identified_mac(&database_url, mac.mac_id).await {
+                utils::display_mac_details(&database_url, &mac).await;
+
+                let mut buffer = String::new();
+                let stdin = io::stdin();
+                let _ = stdin.read_line(&mut buffer);
+
+                if !buffer.trim().is_empty() {
+                    db::record_custom(&database_url, mac.mac_id, mac.ip_id, buffer.trim()).await;
                     println!("Set custom name to: '{}'\n", buffer.trim());
                 }
             }

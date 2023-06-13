@@ -16,13 +16,6 @@ struct SlackMessage {
     text: String,
 }
 
-#[derive(FromQueryResult, Debug)]
-pub struct DeviceSeen {
-    seen_count: i32,
-    seen_recently: Option<String>,
-    seen_first: String,
-}
-
 // Audit thread analyzes recent_activity.
 pub async fn audit_loop(database_url: String, config: &Config) {
     let mut every_second = 0;
@@ -72,21 +65,7 @@ pub async fn audit_loop(database_url: String, config: &Config) {
 
                 // @TODO: Add generic notification library/integration(s) here.
                 if seen_mac.is_none() {
-                    let timestamp = recent_activity::Entity::find()
-                        .left_join(Mac)
-                        .filter(recent_activity::Column::Mac.contains(&activity.mac))
-                        .filter(recent_activity::Column::Audited.eq(1))
-                        .group_by(recent_activity::Column::Mac)
-                        .column_as(
-                            recent_activity::Column::RecentActivityId.count(),
-                            "seen_count",
-                        )
-                        .column_as(recent_activity::Column::Timestamp.max(), "seen_recently")
-                        .column_as(mac::Column::Created, "seen_first")
-                        .into_model::<DeviceSeen>()
-                        .one(db)
-                        .await
-                        .expect("failed to poll timestamp information");
+                    let mac_stats = db::get_mac_stats(&database_url, &activity.mac).await;
 
                     println!("Newly active: {:#?}", activity);
                     // @TODO: For now, hard code a simple Slack notification.
@@ -94,7 +73,7 @@ pub async fn audit_loop(database_url: String, config: &Config) {
                         (config.slack_channel.as_ref(), config.slack_webhook.as_ref())
                     {
                         let mut text = vec![];
-                        if timestamp.is_some() {
+                        if mac_stats.is_some() {
                             text.push("Device returned:".to_string());
                         } else {
                             text.push("New device:".to_string());
@@ -110,17 +89,17 @@ pub async fn audit_loop(database_url: String, config: &Config) {
                             text.push(format!(" - Vendor: {}", vendor));
                         }
                         text.push(format!(" - MAC: {}", activity.mac));
-                        if let Some(seen) = timestamp {
-                            if let Some(recent) = seen.seen_recently {
+                        if let Some(stats) = mac_stats {
+                            if let Some(recent) = stats.seen_recently {
                                 text.push(format!(
                                     " - Last seen: {}",
                                     utils::time_ago(recent, false)
                                 ));
-                                text.push(format!(" - Times seen recently: {}", seen.seen_count));
+                                text.push(format!(" - Times seen recently: {}", stats.seen_count));
                             }
                             text.push(format!(
                                 " - First seen: {}",
-                                utils::time_ago(seen.seen_first, false)
+                                utils::time_ago(stats.seen_first, false)
                             ));
                         }
 
