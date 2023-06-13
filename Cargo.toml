@@ -2,7 +2,7 @@
 name = "netgrasp"
 version = "0.11.0"
 authors = ["Jeremy Andrews <jeremy@tag1consulting.com>"]
-edition = "2018"
+edition = "2021"
 
 [workspace]
 members = [".", "netgrasp_entity", "netgrasp_migration"]
@@ -10,7 +10,6 @@ members = [".", "netgrasp_entity", "netgrasp_migration"]
 [dependencies]
 netgrasp_entity = { path = "netgrasp_entity" }
 netgrasp_migration = { path = "netgrasp_migration" }
-
 arp-toolkit = "0.3"
 chrono = "^0.4"
 clap = { version = "4.3", features = ["derive"] }
@@ -21,8 +20,11 @@ log = "0.4"
 mac_oui = { version = "0.4", features = ["with-db"] }
 async-once-cell = "0.5"
 reqwest = { version = "0.11", features = ["json"] }
-sea-orm = { version = "0.10", features = ["sqlx-all" , "runtime-tokio-rustls", "macros" ] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 simplelog = "0.12"
 tokio = { version = "1", features = ["full"] }
+
+[dependencies.sea-orm]
+version = "^0"
+features = ["sqlx-sqlite", "runtime-tokio-rustls"]
