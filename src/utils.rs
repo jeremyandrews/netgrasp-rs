@@ -1,48 +1,16 @@
-use crate::db::sqlite3::NetgraspActiveDevice;
+// Helper functions.
 
-pub struct DeviceName {
-    pub custom_name: String,
-    pub host_name: String,
-    pub vendor_full_name: String,
-    pub ip_address: String,
-}
+use std::net::{IpAddr, Ipv4Addr};
+use std::time::{SystemTime, UNIX_EPOCH};
 
-// Display a list of all active devices
-pub fn display_active_devices(active_devices: Vec<NetgraspActiveDevice>) {
-    println!("Active devices:");
-    // {:>##} gives the column a fixed width of ## characters, aligned right
-    println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
-    for device in active_devices.iter() {
-        let name = device_name(DeviceName {
-            custom_name: device.custom_name.to_string(),
-            host_name: device.host_name.to_string(),
-            ip_address: device.ip_address.to_string(),
-            vendor_full_name: device.vendor_full_name.to_string(),
-        });
-        println!(
-            "{:>34} {:>16} {:>22}",
-            truncate_string(name, 33),
-            truncate_string(device.ip_address.to_string(), 16),
-            time_ago(device.recently_seen_last as u64, false)
-        );
-    }
-}
+use chrono::naive::NaiveDateTime;
+use dns_lookup::lookup_addr;
+use mac_oui::Oui;
 
-pub fn device_name(device: DeviceName) -> String {
-    if device.custom_name != "" {
-        device.custom_name.to_string()
-    } else if device.host_name != "" && device.host_name != device.ip_address {
-        device.host_name.to_string()
-    } else {
-        format!(
-            "{} ({})",
-            device.vendor_full_name.to_string(),
-            device.ip_address
-        )
-    }
-}
+use crate::db;
+use crate::recent_activity::Model;
 
-pub fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
+pub(crate) fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
     if string_to_truncate.len() as u64 > max_length {
         let truncated_length = max_length - 3;
         string_to_truncate.truncate(truncated_length as usize);
@@ -51,8 +19,13 @@ pub fn truncate_string(mut string_to_truncate: String, max_length: u64) -> Strin
     string_to_truncate
 }
 
-pub fn time_ago(timestamp: u64, precision: bool) -> String {
-    let mut seconds: u64 = crate::utils::time::elapsed(timestamp);
+pub(crate) fn time_ago(timestamp_string: String, precision: bool) -> String {
+    // @TODO: error handling.
+    let timestamp = NaiveDateTime::parse_from_str(&timestamp_string, "%Y-%m-%d %H:%M:%S.%f")
+        .unwrap()
+        .timestamp() as u64;
+
+    let mut seconds: u64 = time_elapsed(timestamp);
     let days: u64 = seconds / 86400;
     let remainder_string;
 
@@ -244,5 +217,123 @@ pub fn time_ago(timestamp: u64, precision: bool) -> String {
                 };
             time_string
         }
+    }
+}
+
+pub(crate) fn timestamp_now() -> u64 {
+    let start = SystemTime::now();
+    start
+        .duration_since(UNIX_EPOCH)
+        .expect("Time went backwards")
+        .as_secs()
+}
+
+pub(crate) fn time_elapsed(timestamp: u64) -> u64 {
+    timestamp_now() - timestamp
+}
+
+// Display a list of all active devices
+pub fn display_active_devices(active_devices: Vec<db::ActiveDevice>) {
+    println!("Active devices:");
+    // {:>##} gives the column a fixed width of ## characters, aligned right
+    println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
+    for device in active_devices.iter() {
+        let name = device_name(DeviceName {
+            custom: device.custom.clone(),
+            host: device.host.clone(),
+            vendor: device.vendor.clone(),
+            mac: device.mac.to_string(),
+            ip: device.ip.to_string(),
+        });
+        println!(
+            "{:>34} {:>16} {:>22}",
+            truncate_string(name, 33),
+            truncate_string(device.ip.to_string(), 16),
+            time_ago(device.recently_seen_last.to_string(), false)
+        );
+    }
+}
+
+pub struct DeviceName {
+    pub custom: Option<String>,
+    pub host: Option<String>,
+    pub vendor: Option<String>,
+    pub mac: String,
+    pub ip: String,
+}
+
+pub fn device_name(device: DeviceName) -> String {
+    if let Some(custom) = device.custom {
+        custom
+    } else if let Some(host) = device.host {
+        host
+    } else if let Some(vendor) = device.vendor {
+        vendor
+    } else {
+        device.mac
+    }
+}
+
+// List all interfaces.
+pub(crate) fn list_interfaces() -> Vec<String> {
+    let mut ifaces: Vec<String> = Vec::new();
+    for iface in if_addrs::get_if_addrs().unwrap() {
+        ifaces.push(iface.name);
+    }
+    ifaces.sort();
+    ifaces.dedup();
+    ifaces
+}
+
+// Map MAC to owner.
+pub(crate) fn get_device_from_mac(oui_db: &Oui, mac_address: &str) -> Option<String> {
+    let oui_lookup = oui_db.lookup_by_mac(mac_address);
+    match oui_lookup {
+        Ok(r) => {
+            if let Some(rec) = r {
+                Some(rec.company_name.to_string())
+            } else {
+                None
+            }
+        }
+        Err(e) => {
+            println!("OUI lookup error: {}", e);
+            None
+        }
+    }
+}
+
+// Map IPv4 address to hostname.
+// @TODO: Also support IPv6.
+pub(crate) fn get_host_from_ip(ip_address: &Ipv4Addr) -> Option<String> {
+    match lookup_addr(&IpAddr::V4(*ip_address)) {
+        Ok(a) => Some(a.to_string()),
+        Err(_) => None,
+    }
+}
+
+pub(crate) async fn display_mac_details(database_url: &str, mac: &Model) {
+    let stats = db::get_mac_stats(database_url, &mac.mac).await;
+    if let Some(custom) = mac.custom.as_ref() {
+        println!("Identified mac address:");
+        println!(" - Custom: {}", custom);
+    } else {
+        println!("Unidentified Mac address:");
+    }
+    println!(" - Interface: {}", mac.interface);
+    if let Some(host) = mac.host.as_ref() {
+        println!(" - Host: {}", host);
+    }
+    println!(" - Ip: {}", mac.ip);
+    if let Some(vendor) = mac.vendor.as_ref() {
+        println!(" - Vendor: {}", vendor);
+    }
+    println!(" - Mac: {}", mac.mac);
+    if let Some(recent) = stats {
+        if let Some(timestamp) = recent.seen_recently {
+            println!(" - Last seen: {}", time_ago(timestamp, false));
+        }
+        println!(" - Times seen recently: {}", recent.seen_count);
+        println!(" - First seen: {}", time_ago(recent.seen_first, false));
     }
 }
