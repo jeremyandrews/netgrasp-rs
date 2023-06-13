@@ -1,6 +1,7 @@
 // Interaction with database layer.
 
 use async_once_cell::OnceCell;
+use chrono::Duration;
 use libarp::arp::ArpMessage;
 use sea_orm::*;
 
@@ -178,7 +179,14 @@ pub struct ActiveDevice {
 
 pub(crate) async fn get_active_devices(database_url: &str) -> Vec<ActiveDevice> {
     let db = connection(database_url).await;
+    let active_duration = Duration::minutes(crate::MINUTES_ACTIVE_FOR);
+    let active_timestamp = chrono::Utc::now()
+        .naive_utc()
+        .checked_sub_signed(active_duration)
+        .unwrap()
+        .to_string();
     match recent_activity::Entity::find()
+        .filter(recent_activity::Column::Timestamp.gt(active_timestamp))
         .column_as(recent_activity::Column::Interface, "interface")
         .column_as(recent_activity::Column::Mac, "mac")
         .column_as(recent_activity::Column::Vendor, "vendor")

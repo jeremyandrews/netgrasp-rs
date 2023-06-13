@@ -1,6 +1,6 @@
 // Thread auditing recent mac activity.
 
-use chrono::Days;
+use chrono::{Days, Duration};
 use sea_orm::*;
 use serde::Serialize;
 
@@ -14,6 +14,13 @@ use crate::{db, utils, Config};
 struct SlackMessage {
     channel: String,
     text: String,
+}
+
+#[derive(FromQueryResult, Debug)]
+pub struct DeviceSeen {
+    seen_count: i32,
+    seen_recently: Option<String>,
+    seen_first: String,
 }
 
 // Audit thread analyzes recent_activity.
@@ -41,11 +48,18 @@ pub async fn audit_loop(database_url: String, config: &Config) {
                 }
             };
 
+            let active_duration = Duration::minutes(crate::MINUTES_ACTIVE_FOR);
             for activity in recent_activity {
-                // Determine if this Mac has been seen recently.
+                let active_timestamp = chrono::Utc::now()
+                    .naive_utc()
+                    .checked_sub_signed(active_duration)
+                    .unwrap()
+                    .to_string();
+                // Determine if this Mac has been seen within the past 2.5 hours.
                 let seen_mac = match recent_activity::Entity::find()
                     .filter(recent_activity::Column::Audited.eq(1))
                     .filter(recent_activity::Column::Mac.contains(&activity.mac))
+                    .filter(recent_activity::Column::Timestamp.gt(active_timestamp))
                     .one(db)
                     .await
                 {
@@ -55,6 +69,69 @@ pub async fn audit_loop(database_url: String, config: &Config) {
                         None
                     }
                 };
+
+                // @TODO: Add generic notification library/integration(s) here.
+                if seen_mac.is_none() {
+                    let timestamp = recent_activity::Entity::find()
+                        .left_join(Mac)
+                        .filter(recent_activity::Column::Mac.contains(&activity.mac))
+                        .filter(recent_activity::Column::Audited.eq(1))
+                        .group_by(recent_activity::Column::Mac)
+                        .column_as(
+                            recent_activity::Column::RecentActivityId.count(),
+                            "seen_count",
+                        )
+                        .column_as(recent_activity::Column::Timestamp.max(), "seen_recently")
+                        .column_as(mac::Column::Created, "seen_first")
+                        .into_model::<DeviceSeen>()
+                        .one(db)
+                        .await
+                        .expect("failed to poll timestamp information");
+
+                    println!("Newly active: {:#?}", activity);
+                    // @TODO: For now, hard code a simple Slack notification.
+                    if let (Some(slack_channel), Some(slack_webhook)) =
+                        (config.slack_channel.as_ref(), config.slack_webhook.as_ref())
+                    {
+                        let mut text = vec![];
+                        if timestamp.is_some() {
+                            text.push("Device returned:".to_string());
+                        } else {
+                            text.push("New device:".to_string());
+                        }
+                        if let Some(custom) = activity.custom {
+                            text.push(format!(" - Custom: {}", custom));
+                        }
+                        if let Some(host) = activity.host {
+                            text.push(format!(" - Host: {}", host));
+                        }
+                        text.push(format!(" - IP: {}", activity.ip));
+                        if let Some(vendor) = activity.vendor {
+                            text.push(format!(" - Vendor: {}", vendor));
+                        }
+                        text.push(format!(" - MAC: {}", activity.mac));
+                        if let Some(seen) = timestamp {
+                            if let Some(recent) = seen.seen_recently {
+                                text.push(format!(
+                                    " - Last seen: {}",
+                                    utils::time_ago(recent, false)
+                                ));
+                                text.push(format!(" - Times seen recently: {}", seen.seen_count));
+                            }
+                            text.push(format!(
+                                " - First seen: {}",
+                                utils::time_ago(seen.seen_first, false)
+                            ));
+                        }
+
+                        let message = SlackMessage {
+                            channel: slack_channel.to_string(),
+                            text: text.join("\n"),
+                        };
+                        let client = reqwest::Client::new();
+                        let _res = client.post(slack_webhook).json(&message).send().await;
+                    }
+                }
 
                 // Update database, activity has been audited.
                 match RecentActivity::update_many()
@@ -70,27 +147,6 @@ pub async fn audit_loop(database_url: String, config: &Config) {
                         std::process::exit(1);
                     }
                 }
-
-                // @TODO: Add generic notification library/integration(s) here.
-                if seen_mac.is_none() {
-                    println!("Seen for the first time: {:#?}", activity);
-                    // @TODO: For now, hard code a simple Slack notification.
-                    if let (Some(slack_channel), Some(slack_webhook)) =
-                        (config.slack_channel.as_ref(), config.slack_webhook.as_ref())
-                    {
-                        let message = SlackMessage {
-                            channel: slack_channel.to_string(),
-                            text: format!("New device:\n - Custom: {:?}\n - Host: {:?}\n - IP: {}\n - Vendor: {:?}\n - Mac: {}",
-                            activity.custom,
-                            activity.host,
-                            activity.ip,
-                            activity.vendor,
-                            activity.mac,
-                        )};
-                        let client = reqwest::Client::new();
-                        let _res = client.post(slack_webhook).json(&message).send().await;
-                    }
-                }
             }
         }
 
@@ -99,15 +155,14 @@ pub async fn audit_loop(database_url: String, config: &Config) {
             let db = db::connection(&database_url).await;
             every_minute = utils::timestamp_now();
 
-            // @TODO: Shrink this to 2-3 hours.
-            let yesterday = chrono::Utc::now()
+            let three_days = chrono::Utc::now()
                 .naive_utc()
-                .checked_sub_days(Days::new(1))
+                .checked_sub_days(Days::new(3))
                 .unwrap()
                 .to_string();
 
             let _res = match recent_activity::Entity::delete_many()
-                .filter(recent_activity::Column::Timestamp.lt(yesterday))
+                .filter(recent_activity::Column::Timestamp.lt(three_days))
                 .exec(db)
                 .await
             {

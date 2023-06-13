@@ -15,6 +15,10 @@ mod audit;
 mod db;
 mod utils;
 
+// Mac addresses are considered active for 2.5 hours after being seen.
+// @TODO: Add a per-device adjustment based on patterns.
+pub(crate) static MINUTES_ACTIVE_FOR: i64 = 150;
+
 #[derive(Debug)]
 pub(crate) struct NetgraspIp<'a> {
     interface: &'a str,
@@ -236,11 +240,11 @@ async fn main() {
             }
         }
 
-        if last_displayed > 100 {
+        // Output recently seen devices every 10 seconds.
+        // @TODO: make this configurable.
+        if utils::timestamp_now() - last_displayed > 10 {
             utils::display_active_devices(db::get_active_devices(&database_url).await);
-            last_displayed = 0;
-        } else {
-            last_displayed += 1;
+            last_displayed = utils::timestamp_now();
         }
     }
 }
