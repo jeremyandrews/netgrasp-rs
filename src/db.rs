@@ -149,12 +149,6 @@ pub(crate) async fn record_activity(
         ..Default::default()
     };
 
-    let db = connection(database_url).await;
-    RecentActivity::insert(new_recent_activity)
-        .exec(db)
-        .await
-        .expect("failed to write activity to database");
-
     let new_activity_log = activity_log::ActiveModel {
         // @TODO: On SQLite this is apparently a string?
         //timestamp: Set(chrono::Utc::now().naive_utc().to_owned()),
@@ -166,6 +160,10 @@ pub(crate) async fn record_activity(
     };
 
     let db = connection(database_url).await;
+    RecentActivity::insert(new_recent_activity)
+        .exec(db)
+        .await
+        .expect("failed to write activity to database");
     ActivityLog::insert(new_activity_log)
         .exec(db)
         .await
