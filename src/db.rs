@@ -286,20 +286,34 @@ pub(crate) async fn record_custom(
     ip_id: i32,
     custom: &str,
 ) -> bool {
-    let new_custom = custom::ActiveModel {
-        created: Set(chrono::Utc::now().naive_utc().to_string()),
-        updated: Set(chrono::Utc::now().naive_utc().to_string()),
-        mac_id: Set(mac_id),
-        ip_id: Set(ip_id),
-        name: Set(custom.to_string()),
-        ..Default::default()
-    };
-    let _ = {
-        let db = connection(&database_url).await;
+    let db = connection(&database_url).await;
+    let existing = Custom::find()
+        .filter(custom::Column::MacId.eq(mac_id))
+        .one(db)
+        .await
+        .expect("failed to query cutom table");
+
+    if let Some(existing) = existing {
+        let mut existing_custom: custom::ActiveModel = existing.into();
+        existing_custom.updated = Set(chrono::Utc::now().naive_utc().to_string());
+        existing_custom.name = Set(custom.to_string());
+        existing_custom
+            .update(db)
+            .await
+            .expect("failed to update custom");
+    } else {
+        let new_custom = custom::ActiveModel {
+            created: Set(chrono::Utc::now().naive_utc().to_string()),
+            updated: Set(chrono::Utc::now().naive_utc().to_string()),
+            mac_id: Set(mac_id),
+            ip_id: Set(ip_id),
+            name: Set(custom.to_string()),
+            ..Default::default()
+        };
         Custom::insert(new_custom)
             .exec(db)
             .await
-            .expect("failed to write custom to database")
-    };
+            .expect("failed to write custom to database");
+    }
     true
 }
