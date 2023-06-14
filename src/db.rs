@@ -212,7 +212,7 @@ pub(crate) async fn get_active_devices(database_url: &str) -> Vec<ActiveDevice> 
             "recently_seen_last",
         )
         .group_by(recent_activity::Column::Interface)
-        .group_by(recent_activity::Column::Ip)
+        .group_by(recent_activity::Column::Mac)
         .order_by_asc(recent_activity::Column::Timestamp.max())
         .into_model::<ActiveDevice>()
         .all(db)
