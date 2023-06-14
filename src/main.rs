@@ -199,6 +199,12 @@ async fn main() {
                 )
                 .await;
             }
+            // Output recently seen devices every 10 seconds.
+            // @TODO: make this configurable.
+            if utils::timestamp_now() - last_displayed > 10 {
+                utils::display_active_devices(db::get_active_devices(&database_url).await);
+                last_displayed = utils::timestamp_now();
+            }
         }
 
         // Output recently seen devices every 10 seconds.

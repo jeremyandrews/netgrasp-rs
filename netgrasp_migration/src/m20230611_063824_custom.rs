@@ -40,6 +40,18 @@ impl MigrationTrait for Migration {
                     .col(ColumnDef::new(Custom::Name).string().not_null())
                     .to_owned(),
             )
+            .await?;
+
+        manager
+            .create_index(
+                Index::create()
+                    .if_not_exists()
+                    .name("idx-custom-macid")
+                    .unique()
+                    .table(Custom::Table)
+                    .col(Custom::MacId)
+                    .to_owned(),
+            )
             .await
     }
 
