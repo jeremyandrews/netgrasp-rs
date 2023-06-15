@@ -7,8 +7,8 @@ use chrono::naive::NaiveDateTime;
 use dns_lookup::lookup_addr;
 use mac_oui::Oui;
 
-use crate::db;
 use crate::recent_activity::Model;
+use crate::{db, Config};
 
 pub(crate) fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
     if string_to_truncate.len() as u64 > max_length {
@@ -233,24 +233,38 @@ pub(crate) fn time_elapsed(timestamp: u64) -> u64 {
 }
 
 // Display a list of all active devices
-pub fn display_active_devices(active_devices: Vec<db::ActiveDevice>) {
+pub fn display_active_devices(active_devices: Vec<db::ActiveDevice>, config: &Config) {
     println!("Active devices:");
     // {:>##} gives the column a fixed width of ## characters, aligned right
     println!("{:>34} {:>16} {:>22}", "Name", "IP", "Last Seen");
     for device in active_devices.iter() {
-        let name = device_name(DeviceName {
-            custom: device.custom.clone(),
-            host: device.host.clone(),
-            vendor: device.vendor.clone(),
-            mac: device.mac.to_string(),
-            ip: device.ip.to_string(),
-        });
-        println!(
-            "{:>34} {:>16} {:>22}",
-            truncate_string(name, 33),
-            truncate_string(device.ip.to_string(), 16),
-            time_ago(device.recently_seen_last.to_string(), false)
-        );
+        let mut display = true;
+        if let Some(custom) = device.custom.as_ref() {
+            for filter in &config.custom_hide_filters {
+                if custom
+                    .to_ascii_lowercase()
+                    .contains(&filter.to_ascii_lowercase())
+                {
+                    display = false;
+                    break;
+                }
+            }
+        }
+        if display {
+            let name = device_name(DeviceName {
+                custom: device.custom.clone(),
+                host: device.host.clone(),
+                vendor: device.vendor.clone(),
+                mac: device.mac.to_string(),
+                ip: device.ip.to_string(),
+            });
+            println!(
+                "{:>34} {:>16} {:>22}",
+                truncate_string(name, 33),
+                truncate_string(device.ip.to_string(), 16),
+                time_ago(device.recently_seen_last.to_string(), false)
+            );
+        }
     }
 }
 

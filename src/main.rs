@@ -51,6 +51,14 @@ pub struct Config {
     /// Optional Slack webhook
     #[arg(short, long)]
     slack_webhook: Option<String>,
+
+    /// Optional custom hide filters
+    #[arg(long, value_delimiter = ',', value_name = "CUSTOM1,CUSTOM2,...")]
+    custom_hide_filters: Vec<String>,
+
+    /// Optional custom device active filters
+    #[arg(long, value_delimiter = ',', value_name = "CUSTOM1|INT,CUSTOM2|INT")]
+    custom_active_filters: Vec<String>,
 }
 
 #[tokio::main]
@@ -159,8 +167,9 @@ async fn main() {
     // Spawn a thread to perform tasks like cleaning up old messages, sending notifications,
     // and detecting patterns.
     let audit_database_url = database_url.clone();
+    let audit_config = config.clone();
     tokio::spawn(async move {
-        audit::audit_loop(audit_database_url, &config).await;
+        audit::audit_loop(audit_database_url, &audit_config).await;
     });
 
     // @TODO: display every X seconds
@@ -202,7 +211,7 @@ async fn main() {
             // Output recently seen devices every 10 seconds.
             // @TODO: make this configurable.
             if utils::timestamp_now() - last_displayed > 10 {
-                utils::display_active_devices(db::get_active_devices(&database_url).await);
+                utils::display_active_devices(db::get_active_devices(&database_url).await, &config);
                 last_displayed = utils::timestamp_now();
             }
         }
@@ -210,7 +219,7 @@ async fn main() {
         // Output recently seen devices every 10 seconds.
         // @TODO: make this configurable.
         if utils::timestamp_now() - last_displayed > 10 {
-            utils::display_active_devices(db::get_active_devices(&database_url).await);
+            utils::display_active_devices(db::get_active_devices(&database_url).await, &config);
             last_displayed = utils::timestamp_now();
         }
     }
