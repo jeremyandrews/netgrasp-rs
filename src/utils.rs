@@ -283,9 +283,9 @@ pub fn device_name(device: DeviceName) -> String {
     } else if let Some(host) = device.host {
         host
     } else if let Some(vendor) = device.vendor {
-        vendor
+        format!("[{}]", vendor)
     } else {
-        device.mac
+        format!("[{}]", device.mac)
     }
 }
 
