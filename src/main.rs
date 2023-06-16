@@ -1,3 +1,4 @@
+use anyhow::{anyhow, Result};
 use clap::Parser;
 use figment::{
     providers::{Env, Format, Serialized, Toml},
@@ -5,9 +6,11 @@ use figment::{
 };
 use mac_oui::Oui;
 use netgrasp_entity::*;
+use regex::Regex;
 use sea_orm::*;
 use serde::{Deserialize, Serialize};
 use std::io;
+use std::str::FromStr;
 use tokio::sync::mpsc;
 
 mod arp;
@@ -17,13 +20,32 @@ mod utils;
 
 // Mac addresses are considered active for 2.5 hours after being seen.
 // @TODO: Add a per-device adjustment based on patterns.
-pub(crate) static MINUTES_ACTIVE_FOR: i64 = 150;
+pub(crate) static MINUTES_ACTIVE_FOR: u32 = 150;
 
 #[derive(Debug)]
 pub(crate) struct NetgraspIp<'a> {
     interface: &'a str,
     address: &'a str,
     host: Option<&'a str>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub(crate) struct CustomActiveFilter(String, u32);
+impl FromStr for CustomActiveFilter {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let re: Regex = Regex::new(r"^(\s*(\w+)\s*\|\s*(\d+)\s*)?$")
+            .expect("failed to compile CustomActiveFilter regex");
+        if let Some(cap) = re.captures(s) {
+            let minutes = cap[3]
+                .parse::<usize>()
+                .expect("failed to convert \\d to u32") as u32;
+            Ok(CustomActiveFilter(cap[2].to_string(), minutes))
+        } else {
+            return Err(anyhow!("Failed to parse custom-active-filter: {}", s));
+        }
+    }
 }
 
 #[derive(Clone, Debug, Parser, Serialize, Deserialize)]

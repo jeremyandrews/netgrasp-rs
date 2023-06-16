@@ -61,7 +61,10 @@ By default, netgrasp will only loop through devices that have not yet been ident
 ### Filters
 
 It is possible to hide devices using case-insensitive pattern matching on the custom name. For example, to hide all devices that you've identified with a custom name that includes the phrases "access point" or "switch" configure as follows:
-`cargo run --release -- --custom-hide-filter="access point,switch"`
+`cargo run --release -- --custom-hide-filters="access point,switch"`
+
+By default, Netgrasp assumes a decide is active for 150 minutes (2.5 hours) after it was last seen. It is possible to configure a custom active time in minutes using case-insensitive pattern matching on the custom name. For example:
+`cargo run --release -- --custom-active-filters="phone|45,switch|1440"`
 
 ## Development Notes
 

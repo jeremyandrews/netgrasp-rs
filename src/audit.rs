@@ -1,13 +1,13 @@
 // Thread auditing recent mac activity.
 
-use chrono::{Days, Duration};
+use chrono::{naive::NaiveDateTime, Days, Utc};
 use sea_orm::*;
 use serde::Serialize;
 
 use netgrasp_entity::{prelude::*, *};
 
 use crate::sea_query::Expr;
-use crate::{db, utils, Config};
+use crate::{db, utils, Config, CustomActiveFilter, MINUTES_ACTIVE_FOR};
 
 // Send a simple messsage to Slack.
 #[derive(Debug, Serialize)]
@@ -20,6 +20,9 @@ struct SlackMessage {
 pub async fn audit_loop(database_url: String, config: &Config) {
     let mut every_second = 0;
     let mut every_minute = 0;
+
+    let custom_active_filters = utils::get_custom_active_filters(&config);
+
     loop {
         // Every second...
         if utils::timestamp_now() - every_second > 1 {
@@ -41,18 +44,12 @@ pub async fn audit_loop(database_url: String, config: &Config) {
                 }
             };
 
-            let active_duration = Duration::minutes(crate::MINUTES_ACTIVE_FOR);
             for activity in recent_activity {
-                let active_timestamp = chrono::Utc::now()
-                    .naive_utc()
-                    .checked_sub_signed(active_duration)
-                    .unwrap()
-                    .to_string();
-                // Determine if this Mac has been seen within the past 2.5 hours.
+                // Determine when this Mac was last seen.
                 let seen_mac = match recent_activity::Entity::find()
                     .filter(recent_activity::Column::Audited.eq(1))
                     .filter(recent_activity::Column::Mac.contains(&activity.mac))
-                    .filter(recent_activity::Column::Timestamp.gt(active_timestamp))
+                    .order_by_desc(recent_activity::Column::Timestamp)
                     .one(db)
                     .await
                 {
@@ -63,8 +60,12 @@ pub async fn audit_loop(database_url: String, config: &Config) {
                     }
                 };
 
+                let minutes_active_for =
+                    get_minutes_active_for(&activity.custom, &custom_active_filters);
+                let recent_activity = was_recently_active(seen_mac, minutes_active_for);
+
                 // @TODO: Add generic notification library/integration(s) here.
-                if seen_mac.is_none() {
+                if !recent_activity {
                     let mac_stats = db::get_mac_stats(&database_url, &activity.mac).await;
 
                     println!("Newly active: {:#?}", activity);
@@ -157,4 +158,39 @@ pub async fn audit_loop(database_url: String, config: &Config) {
         // Loop 4 times per second.
         tokio::time::sleep(tokio::time::Duration::from_millis(250)).await;
     }
+}
+
+fn get_minutes_active_for(
+    custom_name: &Option<String>,
+    custom_active_filters: &Vec<CustomActiveFilter>,
+) -> u32 {
+    if let Some(custom) = custom_name {
+        for filter in custom_active_filters {
+            if filter.0.contains(custom) {
+                return filter.1;
+            }
+        }
+    }
+    MINUTES_ACTIVE_FOR
+}
+
+fn was_recently_active(seen_mac: Option<recent_activity::Model>, minutes_active_for: u32) -> bool {
+    if let Some(seen) = seen_mac {
+        // Convert timestamp to NaiveDateTime.
+        let last_seen = match NaiveDateTime::parse_from_str(&seen.timestamp, "%Y-%m-%d %H:%M:%S.%f")
+        {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("failed to parse timestamp: {}", e);
+                return false;
+            }
+        };
+
+        let now = Utc::now().naive_utc();
+        let diff = now - last_seen;
+        if diff.num_hours() < minutes_active_for as i64 {
+            return true;
+        }
+    }
+    false
 }

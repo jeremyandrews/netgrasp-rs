@@ -1,6 +1,7 @@
 // Helper functions.
 
 use std::net::{IpAddr, Ipv4Addr};
+use std::str::FromStr;
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use chrono::naive::NaiveDateTime;
@@ -8,7 +9,7 @@ use dns_lookup::lookup_addr;
 use mac_oui::Oui;
 
 use crate::recent_activity::Model;
-use crate::{db, Config};
+use crate::{db, Config, CustomActiveFilter};
 
 pub(crate) fn truncate_string(mut string_to_truncate: String, max_length: u64) -> String {
     if string_to_truncate.len() as u64 > max_length {
@@ -350,4 +351,22 @@ pub(crate) async fn display_mac_details(database_url: &str, mac: &Model) {
         println!(" - Times seen recently: {}", recent.seen_count);
         println!(" - First seen: {}", time_ago(recent.seen_first, false));
     }
+}
+
+pub(crate) fn get_custom_active_filters(config: &Config) -> Vec<CustomActiveFilter> {
+    let mut filters = Vec::new();
+    for line in &config.custom_active_filters {
+        let filter = match CustomActiveFilter::from_str(&line) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!(
+                    "ERROR: custom-active-filter configuration parse failure: {}",
+                    e
+                );
+                continue;
+            }
+        };
+        filters.push(filter);
+    }
+    filters
 }

@@ -185,7 +185,7 @@ pub struct ActiveDevice {
 
 pub(crate) async fn get_active_devices(database_url: &str) -> Vec<ActiveDevice> {
     let db = connection(database_url).await;
-    let active_duration = Duration::minutes(crate::MINUTES_ACTIVE_FOR);
+    let active_duration = Duration::minutes(crate::MINUTES_ACTIVE_FOR as i64);
     let active_timestamp = chrono::Utc::now()
         .naive_utc()
         .checked_sub_signed(active_duration)
