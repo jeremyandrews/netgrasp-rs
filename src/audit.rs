@@ -188,7 +188,7 @@ fn was_recently_active(seen_mac: Option<recent_activity::Model>, minutes_active_
 
         let now = Utc::now().naive_utc();
         let diff = now - last_seen;
-        if diff.num_hours() < minutes_active_for as i64 {
+        if diff.num_minutes() < minutes_active_for as i64 {
             return true;
         }
     }
