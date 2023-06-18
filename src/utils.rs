@@ -242,10 +242,7 @@ pub fn display_active_devices(active_devices: Vec<db::ActiveDevice>, config: &Co
         let mut display = true;
         if let Some(custom) = device.custom.as_ref() {
             for filter in &config.custom_hide_filters {
-                if custom
-                    .to_ascii_lowercase()
-                    .contains(&filter.to_ascii_lowercase())
-                {
+                if custom.to_ascii_lowercase().contains(filter) {
                     display = false;
                     break;
                 }

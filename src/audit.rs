@@ -22,6 +22,7 @@ pub async fn audit_loop(database_url: String, config: &Config) {
     let mut every_minute = 0;
 
     let custom_active_filters = utils::get_custom_active_filters(&config);
+    //println!("custom_active_filters: {:#?}", custom_active_filters);
 
     loop {
         // Every second...
@@ -166,7 +167,7 @@ fn get_minutes_active_for(
 ) -> u32 {
     if let Some(custom) = custom_name {
         for filter in custom_active_filters {
-            if filter.0.contains(custom) {
+            if filter.0.contains(&custom.to_ascii_lowercase()) {
                 return filter.1;
             }
         }

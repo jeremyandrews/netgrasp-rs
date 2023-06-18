@@ -41,7 +41,7 @@ impl FromStr for CustomActiveFilter {
             let minutes = cap[3]
                 .parse::<usize>()
                 .expect("failed to convert \\d to u32") as u32;
-            Ok(CustomActiveFilter(cap[2].to_string(), minutes))
+            Ok(CustomActiveFilter(cap[2].to_ascii_lowercase(), minutes))
         } else {
             return Err(anyhow!("Failed to parse custom-active-filter: {}", s));
         }
