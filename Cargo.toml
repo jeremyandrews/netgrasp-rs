@@ -11,6 +11,7 @@ members = [".", "netgrasp_entity", "netgrasp_migration"]
 netgrasp_entity = { path = "netgrasp_entity" }
 netgrasp_migration = { path = "netgrasp_migration" }
 anyhow = "1.0"
+async-trait = "0.1"
 arp-toolkit = "0.3"
 chrono = "^0.4"
 clap = { version = "4.3", features = ["derive"] }

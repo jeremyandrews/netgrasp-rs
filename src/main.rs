@@ -4,6 +4,7 @@ use figment::{
     providers::{Env, Format, Serialized, Toml},
     Figment,
 };
+use libarp::client::ArpClient;
 use mac_oui::Oui;
 use netgrasp_entity::*;
 use regex::Regex;
@@ -181,8 +182,9 @@ async fn main() {
     let (arp_tx, mut arp_rx) = mpsc::channel(2048);
     for interface in config.interfaces.clone() {
         let interface_arp_tx = arp_tx.clone();
+        let client = ArpClient::new_with_iface_name(&interface).unwrap();
         tokio::spawn(async move {
-            arp::listen_loop(interface.clone(), interface_arp_tx).await;
+            arp::listen_loop(client, interface.clone(), interface_arp_tx).await;
         });
     }
 
