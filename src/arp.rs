@@ -10,18 +10,18 @@ pub struct ArpPacket {
     pub ifname: String,
 }
 
+// Define trait to allow both ArpClient and MockArpClient (for testing)
 #[async_trait]
 pub trait ArpClientTrait {
     async fn receive_next(&mut self) -> Option<ArpMessage>;
-    // Add other methods as needed
 }
 
+// Implement trait for ArpClient.
 #[async_trait]
 impl ArpClientTrait for ArpClient {
     async fn receive_next(&mut self) -> Option<ArpMessage> {
         self.receive_next().await
     }
-    // Add other methods as needed
 }
 
 // Listens for arp packets and sends them through arp_tx.
@@ -57,11 +57,11 @@ struct MockArpClient {
 
 #[async_trait]
 #[cfg(test)]
+// Implement trait for MockArpClient.
 impl ArpClientTrait for MockArpClient {
     async fn receive_next(&mut self) -> Option<ArpMessage> {
         self.messages.pop()
     }
-    // Add other methods as needed
 }
 
 #[cfg(test)]

@@ -85,9 +85,9 @@ Update entities:
 1. Parse configuration file
     * catch HUP signal and reload configuration
     * fix figment implementation to set config in the following priority:
-      # TOML Configuration
-      # environment variable
-      # command line option
+      1. TOML Configuration
+      1. environment variable
+      1. command line option
     * expose more functionality to configuration
 1. Daemonize (<https://github.com/knsd/daemonize)>
 1. Support graceful shutdown
